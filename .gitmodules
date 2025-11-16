@@ -1,0 +1,3 @@
+[submodule "src/natived"]
+	path = src/natived
+	url = https://github.com/Cangjier/natived.git

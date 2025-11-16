@@ -1,0 +1,10 @@
+{
+    "tabs": [
+        {
+            "key": "projects",
+            "title": "Projects",
+            "url": "/novel-next-ui/projects",
+            "icon": "project"
+        }
+    ]
+}
