@@ -231,10 +231,6 @@ export const ProjectsApp = forwardRef<{}, {
             key: "history",
             label: "History",
             children: undefined
-        }, {
-            key: "neuecax-workspace",
-            label: "Neuecax-Workspace",
-            children: undefined
         }]} tabBarExtraContent={{
             right: tab == "history" ? <Tooltip title="Add folder"><Button type="text" icon={<PlusOutlined />} onClick={() => onAddHistory()} >Add Folder</Button></Tooltip> : undefined
         }} />

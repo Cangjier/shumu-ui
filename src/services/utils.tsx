@@ -3,6 +3,18 @@ import { Breakpoint } from "antd/es/_util/responsiveObserver";
 import { forwardRef, RefObject, useCallback, useEffect, useRef, useState } from "react";
 import SparkMD5 from "spark-md5";
 
+export const generateGUID = () => {
+    // Helper function to generate a random four-character hexadecimal segment
+    function s4(): string {
+        return Math.floor((1 + Math.random()) * 0x10000)
+            .toString(16)
+            .substring(1);
+    }
+
+    // Combine four segments to form a GUID
+    return `${s4()}${s4()}-${s4()}-${s4()}-${s4()}-${s4()}${s4()}${s4()}`;
+};
+
 export interface IUseModalSelf {
     setVisible: (visible: boolean) => void;
 }

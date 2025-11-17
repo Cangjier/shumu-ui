@@ -46,5 +46,9 @@ export interface IFolderItem {
     modifyTime: string;
 }
 
-
-
+export interface IFileNode {
+    name: string;
+    fullPath:string;
+    type: "file" | "directory";
+    children?:IFileNode[];
+}

@@ -1,5 +1,5 @@
 import axios from "axios";
-import { ICommonFolder, IFolderItem } from "./interfaces";
+import { ICommonFolder, IFileNode, IFolderItem } from "./interfaces";
 import { BaseServices } from "./baseServices";
 const debug = import.meta.env.VITE_DEBUG === "true";
 if (debug) {
@@ -7,7 +7,7 @@ if (debug) {
 }
 
 const LocalServices = () => {
-    const base = BaseServices((window as any).webapplication.baseURL ?? "http://localhost:12332");
+    const base = BaseServices((window as any).webapplication?.baseURL ?? "http://localhost:12332");
     const { api, runAsync,run } = base;
     const fileConstructor = () => {
         const list = async (path: string) => {
@@ -18,6 +18,15 @@ const LocalServices = () => {
             return (response as {
                 items: IFolderItem[]
             }).items;
+        };
+        const listAll = async (path: string) => {
+            let response = await run("file", {
+                action: "list-all",
+                path
+            });
+            return (response as {
+                nodes: IFileNode[]
+            }).nodes;
         };
         const read = async (path: string) => {
             let response = await run("file", {
@@ -141,6 +150,7 @@ const LocalServices = () => {
         };
         return {
             list,
+            listAll,
             read,
             write,
             commonFolders,
@@ -159,6 +169,7 @@ const LocalServices = () => {
         };
     };
     const file = fileConstructor();
+    
 
     return {
         file,

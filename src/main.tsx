@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom/client';
 import { BrowserRouter, Route, Routes } from 'react-router-dom';
 import { Home } from './pages/Home';
 import { InjectStyle } from './natived';
+import { Projects } from './pages/Projects';
 const VITE_PUBLIC_URL = import.meta.env.VITE_PUBLIC_URL;
 console.log(`build time:${import.meta.env.VITE_APP_BUILD_TIME}`);
 InjectStyle(`
@@ -24,6 +25,7 @@ root.render(
         {/* <Route path="/settings" element={<Settings />} />
         <Route path="/login" element={<Login />} />
         <Route path="/chapters" element={<Chapters />} /> */}
+        <Route path="/projects" element={<Projects />} />
       </Routes>
     </BrowserRouter>
   </React.StrictMode>

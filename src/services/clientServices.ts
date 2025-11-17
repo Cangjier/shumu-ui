@@ -10,7 +10,7 @@ export interface IBroadcastMessage {
 }
 export const ClientServices = () => {
     (window as any).app_id = generateGUID();
-    const base = BaseServices((window as any).webapplication.baseURL ?? "http://localhost:12332");
+    const base = BaseServices((window as any).webapplication?.baseURL ?? "http://localhost:12332");
     const api = base.api;
     const broadcastWebSocket = new WebSocket(base.getBaseURL() + "/api/v1/app/broadcast");
     const broadcastEvents: ((data: IBroadcastMessage) => void)[] = [];
