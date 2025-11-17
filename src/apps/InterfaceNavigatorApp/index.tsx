@@ -1,9 +1,10 @@
 import { PlusOutlined } from "@ant-design/icons";
-import { Button, message, Spin, Tree } from "antd";
+import { Button, message, Spin, Tree, TreeDataNode } from "antd";
 import { forwardRef, useEffect, useRef, useState } from "react";
 import { IFileNode } from "../../services/interfaces";
 import { useUpdate } from "../../natived";
 import { localServices } from "../../services/localServices";
+import DirectoryTree from "antd/es/tree/DirectoryTree";
 
 export interface IInterfaceNavigatorAppProps {
     interfacePath: string;
@@ -12,8 +13,9 @@ export interface IInterfaceNavigatorAppRef {
 
 }
 
-export interface IFileRecord extends IFileNode {
+export interface IFileRecord extends IFileNode, TreeDataNode {
     key: string;
+    children?: IFileRecord[];
 }
 
 export const InterfaceNavigatorApp = forwardRef<IInterfaceNavigatorAppRef, IInterfaceNavigatorAppProps>((props, ref) => {
@@ -61,6 +63,8 @@ export const InterfaceNavigatorApp = forwardRef<IInterfaceNavigatorAppRef, IInte
         const transform = (nodes: IFileNode[]): IFileRecord[] => {
             return nodes.map(item => ({
                 key: item.fullPath,
+                title: item.name,
+                isLeaf: item.type === "file",
                 ...item,
                 children: item.children ? transform(item.children) : undefined
             } as IFileRecord));
@@ -89,7 +93,9 @@ export const InterfaceNavigatorApp = forwardRef<IInterfaceNavigatorAppRef, IInte
             }}>
                 <Button type="text" icon={<PlusOutlined />}>New Project</Button>
             </div>
-            <Tree />
+            <DirectoryTree
+                blockNode
+                treeData={fileRecords} />
             <div style={{
                 position: "absolute",
                 display: loading.loading > 0 ? "flex" : "none",
