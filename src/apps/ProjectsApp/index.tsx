@@ -123,7 +123,7 @@ export const ProjectsApp = forwardRef<{}, {
     };
     const onSelectHistory = (history: HistoryRecord) => {
         broadcastSelectHistoryFromHistoryToAll(history);
-        broadcastSwitchToHome("git", historyAppName);
+        broadcastSwitchToHome("interface", historyAppName);
     };
     const onDeleteHistory = async (project: HistoryRecord) => {
         let projectsString = await localServices.file.readAppdata(historyFileName);

@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 
 export const assign = (from: any, to: any) => {
@@ -46,6 +46,16 @@ export const useUpdate = <T>(value: T) => {
 
     }
     return [state, update, ref] as const
+}
+
+export const usePropsRef = <T>(props: T) => {
+    const ref = useRef(props);
+
+    useEffect(() => {
+        ref.current = props;
+    });
+
+    return ref;
 }
 
 export const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))

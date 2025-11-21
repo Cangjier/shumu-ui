@@ -4,6 +4,7 @@ import { useUpdate } from "../../natived";
 import { Button, message, Spin, Tooltip } from "antd";
 import { pathUtils } from "../../services/utils";
 import { PlayCircleOutlined, SaveOutlined } from "@ant-design/icons";
+import { localServices } from "../../services/localServices";
 
 export interface IInterfaceEditorProps {
     style?: React.CSSProperties;
@@ -56,63 +57,9 @@ export const InterfaceEditor = forwardRef<IInterfaceEditorRef, IInterfaceEditorP
         }
     };
     const saveModifiedCode = async (onSaved: () => void) => {
-        await Try({ useRightPanelLoading: true }, async () => {
-            if (diffNewCommitRef.current.hash == "Workspace") {
-                await localServices.file.write(`${projectPathRef.current}/${diffModifiedChangeRef.current?.path}`, modifiedCodeRef.current);
-                onSaved();
-            }
-            else if (diffNewCommitRef.current.hash.toLowerCase() == "head") {
-                let accept = await showModal((self) => {
-                    return <div style={{
-                        display: "flex",
-                        flexDirection: "column",
-                        gap: "10px",
-                    }}>
-                        <div>Save modified code to workspace?</div>
-                    </div>
-                }, {});
-                if (accept) {
-                    await localServices.file.write(`${projectPathRef.current}/${diffModifiedChangeRef.current?.path}`, modifiedCodeRef.current);
-                    onSaved();
-                }
-            }
-            else {
-                let accept = await showModal((self) => {
-                    return <div style={{
-                        display: "flex",
-                        flexDirection: "column",
-                        gap: "10px",
-                    }}>
-                        <div style={{
-                            fontWeight: "bold",
-                            display: "flex",
-                            flexDirection: "row",
-                            alignItems: "center",
-                            gap: "5px"
-                        }}>Save modified code from <Tooltip title={
-                            [
-                                diffNewCommitRef.current.author,
-                                diffNewCommitRef.current.date,
-                                ...diffNewCommitRef.current.message
-                            ].map(message => <div>{message}</div>)}>
-                                <div style={{
-                                    display: "flex",
-                                    flexDirection: "row",
-                                    alignItems: "center",
-                                    gap: "5px"
-                                }}>
-                                    <GitCommitSVG />
-                                    {diffNewCommitRef.current.hash}
-                                </div>
-                            </Tooltip> to workspace?</div>
-                    </div>
-                }, {});
-                if (accept) {
-                    await localServices.file.write(`${projectPathRef.current}/${diffModifiedChangeRef.current?.path}`, modifiedCodeRef.current);
-                    onSaved();
-                }
-            }
-
+        await Try({ useLoading: true }, async () => {
+            await localServices.file.write(`${props.filePath}`, codeRef.current);
+            onSaved();
         });
     };
     const onRunCode = async () => {
