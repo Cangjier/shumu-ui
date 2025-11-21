@@ -6,9 +6,17 @@ if (debug) {
     console.log("!!! Debug Mode");
 }
 
+export interface terminalOptions {
+    shell?: string;
+    workingDirectory?: string;
+    environmentVariables?: any;
+    columns?: number;
+    rows?: number;
+}
+
 const LocalServices = () => {
     const base = BaseServices((window as any).webapplication?.baseURL ?? "http://localhost:12332");
-    const { api, runAsync,run } = base;
+    const { api, runAsync, run } = base;
     const fileConstructor = () => {
         const list = async (path: string) => {
             let response = await run("file", {
@@ -169,10 +177,94 @@ const LocalServices = () => {
         };
     };
     const file = fileConstructor();
-    
+    const terminalConstructor = () => {
+        const terminalOutputRoute: Map<string, (bytes: Uint8Array) => void> = new Map();
+        let ws: WebSocket | null = null;
+        const base64ToUint8Array = (base64: string): Uint8Array => {
+            // 移除可能的 data URL 前缀（如 "data:image/png;base64,"）
+            const base64Data = base64.replace(/^data:[^;]+;base64,/, '');
 
+            // 解码 Base64 字符串
+            const binaryString = atob(base64Data);
+
+            // 将二进制字符串转换为 Uint8Array
+            const bytes = new Uint8Array(binaryString.length);
+            for (let i = 0; i < binaryString.length; i++) {
+                bytes[i] = binaryString.charCodeAt(i);
+            }
+
+            return bytes;
+        };
+        const initialize = () => {
+            ws = new WebSocket(`ws://${api.defaults.baseURL?.substring(api.defaults.baseURL?.lastIndexOf("/") + 1)}/`);
+            ws.binaryType = 'arraybuffer';
+            ws.onopen = () => {
+
+            }
+            ws.onmessage = (event) => {
+                let data = JSON.parse(event.data);
+                if (data.type === "terminal-output") {
+                    let terminalID = data.terminalID;
+                    // base64 decode, 采用浏览器自带的解码器
+                    let output = base64ToUint8Array(data.output as string);
+                    let terminalOutput = terminalOutputRoute.get(terminalID);
+                    if (terminalOutput) {
+                        terminalOutput(output);
+                    }
+                }
+            }
+            ws.onclose = () => {
+            }
+        };
+        const list = async () => {
+            let response = await api.get("/api/v1/terminal/list");
+            if (response.data.success) {
+                return response.data.data as string[];
+            }
+            else {
+                throw new Error(response.data.message);
+            }
+        }
+        const create = async (options: terminalOptions) => {
+            let response = await api.post("/api/v1/terminal/create", {
+                options
+            });
+            if (response.data.success) {
+                return response.data.data as string;
+            }
+            else {
+                throw new Error(response.data.message);
+            }
+        }
+        const close = async (id: string) => {
+            let response = await api.post("/api/v1/terminal/close", {
+                id
+            });
+            if (response.data.success) {
+                return;
+            }
+            else {
+                throw new Error(response.data.message);
+            }
+        }
+        const start = async (id: string) => {
+            ws?.send(JSON.stringify({
+                url:"/api/v1/terminal/start",
+                terminalID: id
+            }));
+        }
+        return {
+            initialize,
+            list,
+            create,
+            close,
+            start
+        }
+    };
+    const terminal = terminalConstructor();
     return {
         file,
+        terminal,
         ...base
     }
 }

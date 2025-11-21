@@ -12,7 +12,7 @@ export interface IInterfaceAppRef {
 type RightPanelType = "none" | "editor";
 export const InterfaceApp = forwardRef<IInterfaceAppRef, IInterfaceAppProps>((props, ref) => {
     const [interfacePath, updateInterfacePath, interfacePathRef] = useUpdate<string>("");
-    const [rightPanel, updateRightPanel, rightPanelRef] = useUpdate<RightPanelType>("none");
+    const [rightPanelType, updateRightPanelType, rightPanelTypeRef] = useUpdate<RightPanelType>("none");
     return (
         <div style={{
             display: "flex",
@@ -28,7 +28,7 @@ export const InterfaceApp = forwardRef<IInterfaceAppRef, IInterfaceAppProps>((pr
                 </Splitter.Panel>
                 <Splitter.Panel>
                     <div style={{
-                        display: rightPanel === "editor" ? "flex" : "none",
+                        display: rightPanelType === "editor" ? "flex" : "none",
                         width: "100%",
                         height: "100%",
                         flexDirection: "column",

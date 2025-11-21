@@ -4,6 +4,7 @@ import { BrowserRouter, Route, Routes } from 'react-router-dom';
 import { Home } from './pages/Home';
 import { InjectStyle } from './natived';
 import { Projects } from './pages/Projects';
+import { InterfacePage } from './pages/InterfacePage';
 const VITE_PUBLIC_URL = import.meta.env.VITE_PUBLIC_URL;
 console.log(`build time:${import.meta.env.VITE_APP_BUILD_TIME}`);
 InjectStyle(`
@@ -26,6 +27,7 @@ root.render(
         <Route path="/login" element={<Login />} />
         <Route path="/chapters" element={<Chapters />} /> */}
         <Route path="/projects" element={<Projects />} />
+        <Route path="/interface" element={<InterfacePage />} />
       </Routes>
     </BrowserRouter>
   </React.StrictMode>

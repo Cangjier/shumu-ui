@@ -5,6 +5,12 @@
             "title": "Projects",
             "url": "/shumu-ui/projects",
             "icon": "project"
+        },
+        {
+            "key": "interface",
+            "title": "Interface",
+            "url": "/shumu-ui/interface",
+            "icon": "interface"
         }
     ]
 }

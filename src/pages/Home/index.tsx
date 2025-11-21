@@ -4,6 +4,7 @@ import { Button, Spin, Splitter } from "antd";
 import { CloseOutlined, FolderOutlined, MinusOutlined, ProjectOutlined } from "@ant-design/icons";
 import { clientServices } from "../../services/clientServices.ts";
 import { remoteServices } from "../../services/remoteServices.ts";
+import InterfaceSVG from "../../svgs/Interface.svg?react";
 
 export const dragClass = InjectClass(`
 -webkit-app-region: drag;
@@ -99,6 +100,7 @@ export const Home = forwardRef<IHomeRef, IHomeProps>((props, ref) => {
     const renderIcon = (icon?: string) => {
         if (icon == "folder") return <FolderOutlined />;
         else if (icon == "project") return <ProjectOutlined />;
+        else if (icon == "interface") return <InterfaceSVG />;
         else return <></>;
     };
     const renderTab = (tab: ILayoutTab) => {
