@@ -14,6 +14,16 @@ export interface terminalOptions {
     rows?: number;
 }
 
+export interface ITerminalConstructor {
+    initialize: () => void;
+    list: () => Promise<string[]>;
+    create: (options: terminalOptions) => Promise<string>;
+    close: (id: string) => Promise<void>;
+    start: (id: string) => Promise<void>;
+    listen: (onPredicate: (id:string)=>boolean, callback: (id:string, bytes: Uint8Array) => void) => () => void;
+    send: (id: string, data: string) => Promise<void>;
+}
+
 const LocalServices = () => {
     const base = BaseServices((window as any).webapplication?.baseURL ?? "http://localhost:12332");
     const { api, runAsync, run } = base;
@@ -178,7 +188,7 @@ const LocalServices = () => {
     };
     const file = fileConstructor();
     const terminalConstructor = () => {
-        const terminalOutputRoute: Map<string, (bytes: Uint8Array) => void> = new Map();
+        const terminalOutputRoute: Map<(id:string)=>boolean, (id:string, bytes: Uint8Array) => void> = new Map();
         let ws: WebSocket | null = null;
         const base64ToUint8Array = (base64: string): Uint8Array => {
             // 移除可能的 data URL 前缀（如 "data:image/png;base64,"）
@@ -207,9 +217,10 @@ const LocalServices = () => {
                     let terminalID = data.terminalID;
                     // base64 decode, 采用浏览器自带的解码器
                     let output = base64ToUint8Array(data.output as string);
-                    let terminalOutput = terminalOutputRoute.get(terminalID);
-                    if (terminalOutput) {
-                        terminalOutput(output);
+                    for (let [onPredicate, callback] of terminalOutputRoute.entries()) {
+                        if (onPredicate(terminalID)) {
+                            callback(terminalID, output);
+                        }
                     }
                 }
             }
@@ -253,18 +264,34 @@ const LocalServices = () => {
                 terminalID: id
             }));
         }
+        const listen = (onPredicate: (id:string)=>boolean, callback: (id:string, bytes: Uint8Array) => void) => {
+            terminalOutputRoute.set(onPredicate, callback);
+            return () => {
+                terminalOutputRoute.delete(onPredicate);
+            }
+        }
+        const send = async (id: string, data: string) => {
+            let response = await api.post("/api/v1/terminal/send", {
+                terminalID: id,
+                data
+            });
+            if (response.data.success) {
+                return;
+            }
+        }
         return {
             initialize,
             list,
             create,
             close,
-            start
-        }
+            start,
+            listen,
+            send
+        } as ITerminalConstructor;
     };
-    const terminal = terminalConstructor();
     return {
         file,
-        terminal,
+        terminalConstructor,
         ...base
     }
 }

@@ -1,6 +1,6 @@
-import { PlusOutlined } from "@ant-design/icons";
+import { PlusOutlined, RedoOutlined } from "@ant-design/icons";
 import { Button, message, Spin, Tree, TreeDataNode } from "antd";
-import { forwardRef, useEffect, useRef, useState } from "react";
+import { forwardRef, Key, useEffect, useRef, useState } from "react";
 import { IFileNode } from "../../services/interfaces";
 import { usePropsRef, useUpdate } from "../../natived";
 import { localServices } from "../../services/localServices";
@@ -8,10 +8,13 @@ import DirectoryTree from "antd/es/tree/DirectoryTree";
 import InterfaceSVG from "../../svgs/Interface.svg?react";
 import { FileDialog } from "../FileDialog";
 import { pathUtils, useModal } from "../../services/utils";
+import { EventDataNode } from "antd/es/tree";
 
 export interface IInterfaceNavigatorAppProps {
-    interfacePath: string;
+    style?: React.CSSProperties;
+    interfacePath: string | undefined;
     onChangeInterfacePath: (path: string) => void;
+    onSelectFile: (path: string) => void;
 }
 export interface IInterfaceNavigatorAppRef {
 
@@ -76,7 +79,7 @@ export const InterfaceNavigatorApp = forwardRef<IInterfaceNavigatorAppRef, IInte
             } as IFileRecord));
         };
         await Try({ useLoading: true }, async () => {
-            if(propsRef.current.interfacePath == ""){
+            if (propsRef.current.interfacePath == "" || propsRef.current.interfacePath == undefined) {
                 console.log("Interface path is empty");
                 updateFileRecords([]);
                 return;
@@ -100,7 +103,7 @@ export const InterfaceNavigatorApp = forwardRef<IInterfaceNavigatorAppRef, IInte
         refreshRef.current();
     }, []);
     const onSelectProject = async () => {
-        let currentFolder = props.interfacePath;
+        let currentFolder = propsRef.current.interfacePath;
         let accept = await showModal((self) => {
             return <FileDialog
                 style={{
@@ -123,16 +126,32 @@ export const InterfaceNavigatorApp = forwardRef<IInterfaceNavigatorAppRef, IInte
             },
             width: "80vw"
         })
-        if (accept) {
-            props.onChangeInterfacePath(currentFolder);
+        if (accept && currentFolder != undefined) {
+            propsRef.current.onChangeInterfacePath(currentFolder);
         }
+    };
+    const onSelectFileRecord = ((selectedKeys: Key[], info: {
+        event: "select";
+        selected: boolean;
+        node: EventDataNode<IFileRecord>;
+        selectedNodes: IFileRecord[];
+        nativeEvent: MouseEvent;
+    }) => {
+        // console.log("Selected file record:", info.node);
+        if (info.node.isLeaf) {
+            props.onSelectFile(info.node.fullPath);
+        }
+    });
+    const onRefresh = async () => {
+        await refreshRef.current();
     };
     return (
         <div style={{
             display: 'flex',
             flexDirection: 'column',
             position: "relative",
-            height: "100%"
+            height: "100%",
+            ...props.style
         }}>
             {messageContextHolder}
             {modalContainer}
@@ -146,16 +165,23 @@ export const InterfaceNavigatorApp = forwardRef<IInterfaceNavigatorAppRef, IInte
                 <Button size={"small"}
                     type="text"
                     icon={<InterfaceSVG />}
-                    onClick={onSelectProject}>{props.interfacePath != "" ? pathUtils.getFileName(props.interfacePath) : "Select Project"}</Button>
+                    onClick={onSelectProject}>{props.interfacePath ? pathUtils.getFileName(props.interfacePath) : "Select Project"}</Button>
+                <Button size={"small"}
+                    type="text"
+                    icon={<RedoOutlined />}
+                    onClick={onRefresh} />
+                <Button type="text" icon={<PlusOutlined />} />
                 <Button type="text" icon={<PlusOutlined />} />
             </div>
             <div style={{
                 flex: 1,
-                height: 0
+                height: 0,
+                overflowY: "auto"
             }}>
-            <DirectoryTree
-                blockNode
-                treeData={fileRecords} />
+                <DirectoryTree
+                    onSelect={onSelectFileRecord}
+                    blockNode
+                    treeData={fileRecords} />
             </div>
             <div style={{
                 position: "absolute",
