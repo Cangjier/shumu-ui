@@ -120,6 +120,7 @@ export const Home = forwardRef<IHomeRef, IHomeProps>((props, ref) => {
                 height: 0,
                 border: 'none',
                 display: currentTab == tab.key ? undefined : 'none'
+                // visibility: currentTab == tab.key ? 'visible' : 'hidden'
             }}></iframe>
         }
     };

@@ -170,8 +170,6 @@ export const InterfaceNavigatorApp = forwardRef<IInterfaceNavigatorAppRef, IInte
                     type="text"
                     icon={<RedoOutlined />}
                     onClick={onRefresh} />
-                <Button type="text" icon={<PlusOutlined />} />
-                <Button type="text" icon={<PlusOutlined />} />
             </div>
             <div style={{
                 flex: 1,

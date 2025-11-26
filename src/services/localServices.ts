@@ -15,13 +15,17 @@ export interface terminalOptions {
 }
 
 export interface ITerminalConstructor {
-    initialize: () => void;
+    initialize: () => Promise<void>;
     list: () => Promise<string[]>;
     create: (options: terminalOptions) => Promise<string>;
     close: (id: string) => Promise<void>;
     start: (id: string) => Promise<void>;
-    listen: (onPredicate: (id:string)=>boolean, callback: (id:string, bytes: Uint8Array) => void) => () => void;
+    listen: (onPredicate: (id: string) => boolean, callback: (id: string, bytes: Uint8Array) => void) => () => void;
     send: (id: string, data: string) => Promise<void>;
+    resize: (id: string, rows: number, columns: number) => Promise<void>;
+    save: (id: string, data: any) => Promise<void>;
+    load: (id: string) => Promise<any>;
+    debug: (message: string) => void;
 }
 
 const LocalServices = () => {
@@ -188,8 +192,14 @@ const LocalServices = () => {
     };
     const file = fileConstructor();
     const terminalConstructor = () => {
-        const terminalOutputRoute: Map<(id:string)=>boolean, (id:string, bytes: Uint8Array) => void> = new Map();
+        const debug = (message: string) => {
+            // console.log(`[Terminal] ${new Date().toISOString()} ${message}`);
+        };
+        const terminalOutputRoute: Map<(id: string) => boolean, (id: string, bytes: Uint8Array) => void> = new Map();
         let ws: WebSocket | null = null;
+        let startedResolve: Map<string, (value: void | PromiseLike<void>) => void> = new Map();
+        let isStarted: Map<string, boolean> = new Map();
+        let messageQueue: Map<string, Uint8Array[]> = new Map();
         const base64ToUint8Array = (base64: string): Uint8Array => {
             // 移除可能的 data URL 前缀（如 "data:image/png;base64,"）
             const base64Data = base64.replace(/^data:[^;]+;base64,/, '');
@@ -205,27 +215,64 @@ const LocalServices = () => {
 
             return bytes;
         };
-        const initialize = () => {
-            ws = new WebSocket(`ws://${api.defaults.baseURL?.substring(api.defaults.baseURL?.lastIndexOf("/") + 1)}/`);
-            ws.binaryType = 'arraybuffer';
-            ws.onopen = () => {
-
+        const processMessageQueue = (terminalID: string) => {
+            debug(`processMessageQueue: ${terminalID}`);
+            if (messageQueue.has(terminalID) === false) {
+                messageQueue.set(terminalID, []);
             }
-            ws.onmessage = (event) => {
-                let data = JSON.parse(event.data);
-                if (data.type === "terminal-output") {
-                    let terminalID = data.terminalID;
-                    // base64 decode, 采用浏览器自带的解码器
-                    let output = base64ToUint8Array(data.output as string);
+            let queue = messageQueue.get(terminalID);
+            if (queue === undefined) {
+                return;
+            }
+            while (queue.length > 0) {
+                let messageItem = queue.shift();
+                if (messageItem) {
                     for (let [onPredicate, callback] of terminalOutputRoute.entries()) {
                         if (onPredicate(terminalID)) {
-                            callback(terminalID, output);
+                            callback(terminalID, messageItem);
                         }
                     }
                 }
-            }
-            ws.onclose = () => {
-            }
+            };
+        };
+        const initialize = () => {
+            return new Promise<void>((resolve, reject) => {
+                ws = new WebSocket(`ws://${api.defaults.baseURL?.substring(api.defaults.baseURL?.lastIndexOf("/") + 1)}/`);
+                ws.binaryType = 'arraybuffer';
+                ws.onopen = () => {
+                    resolve();
+                }
+                ws.onmessage = (event) => {
+                    let data = JSON.parse(event.data);
+                    if (data.type === "terminal-output") {
+                        let terminalID = data.terminalID;
+                        // base64 decode, 采用浏览器自带的解码器
+                        let output = base64ToUint8Array(data.output as string);
+                        debug(`terminal-output: ${terminalID}, ${output.length}bytes`);
+                        if (messageQueue.has(terminalID) === false) {
+                            messageQueue.set(terminalID, []);
+                        }
+                        let queue = messageQueue.get(terminalID);
+                        if (queue === undefined) {
+                            return;
+                        }
+                        queue.push(output);
+                        if (isStarted.get(terminalID)) {
+                            processMessageQueue(terminalID);
+                        }
+                    }
+                    else if (data.type === "terminal-started") {
+                        debug(`terminal-started: ${data.terminalID}`);
+                        processMessageQueue(data.terminalID);
+                        isStarted.set(data.terminalID, true);
+                        startedResolve.get(data.terminalID)?.();
+                        startedResolve.delete(data.terminalID);
+                    }
+                }
+                ws.onclose = () => {
+
+                }
+            });
         };
         const list = async () => {
             let response = await api.get("/api/v1/terminal/list");
@@ -248,35 +295,57 @@ const LocalServices = () => {
             }
         }
         const close = async (id: string) => {
-            let response = await api.post("/api/v1/terminal/close", {
-                id
-            });
-            if (response.data.success) {
-                return;
-            }
-            else {
-                throw new Error(response.data.message);
-            }
-        }
-        const start = async (id: string) => {
             ws?.send(JSON.stringify({
-                url:"/api/v1/terminal/start",
+                url: "/api/v1/terminal/close",
                 terminalID: id
             }));
         }
-        const listen = (onPredicate: (id:string)=>boolean, callback: (id:string, bytes: Uint8Array) => void) => {
+        const start = (id: string) => {
+            return new Promise<void>((resolve, reject) => {
+                startedResolve.set(id, resolve);
+                isStarted.set(id, false);
+                ws?.send(JSON.stringify({
+                    url: "/api/v1/terminal/start",
+                    terminalID: id
+                }));
+            });
+        }
+        const listen = (onPredicate: (id: string) => boolean, callback: (id: string, bytes: Uint8Array) => void) => {
             terminalOutputRoute.set(onPredicate, callback);
             return () => {
                 terminalOutputRoute.delete(onPredicate);
             }
         }
         const send = async (id: string, data: string) => {
-            let response = await api.post("/api/v1/terminal/send", {
+            ws?.send(JSON.stringify({
+                url: "/api/v1/terminal/send",
+                terminalID: id,
+                data
+            }));
+        }
+        const resize = async (id: string, rows: number, columns: number) => {
+            ws?.send(JSON.stringify({
+                url: "/api/v1/terminal/resize",
+                terminalID: id,
+                rows,
+                columns
+            }));
+        }
+        const save = async (id: string, data: any) => {
+            await api.post("/api/v1/terminal/save", {
                 terminalID: id,
                 data
             });
+        }
+        const load = async (id: string) => {
+            let response = await api.get("/api/v1/terminal/load", {
+                params: { terminalID: id }
+            });
             if (response.data.success) {
-                return;
+                return response.data.data;
+            }
+            else {
+                throw new Error(response.data.message);
             }
         }
         return {
@@ -286,12 +355,50 @@ const LocalServices = () => {
             close,
             start,
             listen,
-            send
+            send,
+            resize,
+            save,
+            load,
+            debug
         } as ITerminalConstructor;
     };
+    const historyConstructor = () => {
+        const push = async (path: string, content: string) => {
+            await run("history", {
+                action: "push",
+                path,
+                content
+            });
+        }
+        const undo = async (path: string) => {
+            let response = await run("history", {
+                action: "undo",
+                path
+            });
+            return (response as {
+                content: string
+            }).content;
+        }
+        const redo = async (path: string) => {
+            let response = await run("history", {
+                action: "redo",
+                path
+            });
+            return (response as {
+                content: string
+            }).content;
+        }
+        return {
+            push,
+            undo,
+            redo
+        }
+    }
+    const history = historyConstructor();
     return {
         file,
         terminalConstructor,
+        history,
         ...base
     }
 }

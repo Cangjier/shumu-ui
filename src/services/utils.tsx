@@ -30,6 +30,8 @@ export interface IUseModalOptions {
     style?: React.CSSProperties,
     width?: string | number | Partial<Record<Breakpoint, string | number>>,
     height?: string | number,
+    margin?: React.CSSProperties["margin"],
+    padding?: React.CSSProperties["padding"],
     onCancelPredicate?: () => boolean,
     onOkPredicate?: () => Promise<boolean>,
 }
@@ -48,6 +50,8 @@ export function useModal() {
     const [style, setStyle] = useState<React.CSSProperties | undefined>(undefined);
     const [width, setWidth] = useState<string | number | Partial<Record<Breakpoint, string | number>> | undefined>(undefined);
     const [height, setHeight] = useState<string | number | undefined>(undefined);
+    const [margin, setMargin] = useState<React.CSSProperties["margin"] | undefined>(undefined);
+    const [padding, setPadding] = useState<React.CSSProperties["padding"] | undefined>(undefined);
     const onCancelPredicateRef = useRef<() => boolean>(() => true);
     const onOkPredicateRef = useRef<() => Promise<boolean>>(() => Promise.resolve(true));
     const self = useRef<IUseModalSelf>({
@@ -68,6 +72,8 @@ export function useModal() {
             setStyle(options?.style);
             setWidth(options?.width);
             setHeight(options?.height);
+            setMargin(options?.margin);
+            setPadding(options?.padding);
             onCancelPredicateRef.current = options?.onCancelPredicate ?? (() => true);
             onOkPredicateRef.current = options?.onOkPredicate ?? (() => Promise.resolve(true));
             setVisible(true);
@@ -81,6 +87,7 @@ export function useModal() {
     };
 
     const modalContainer = <Modal
+        centered
         open={visible}
         onCancel={() => {
             if (onCancelPredicateRef.current()) {
@@ -103,6 +110,9 @@ export function useModal() {
             footer: footerStyles,
             body: {
                 height: height,
+                margin: margin,
+                padding: padding,
+                overflowY: "auto",
                 ...bodyStyles,
             },
             content: contentStyles,
