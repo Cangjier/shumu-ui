@@ -145,7 +145,8 @@ export interface ITopologyAppProps {
 }
 
 export interface ITopologyAppRef {
-    refresh: () => Promise<void>;
+    fitView: () => void;
+    refresh: (isFitView: boolean) => Promise<void>;
 }
 
 export interface IAnynomousNode {
@@ -156,7 +157,6 @@ export interface IAnynomousNode {
 export interface ITopologySettingsRecord {
     key: string;
     value: string | boolean | number;
-    type: "string" | "boolean" | "number"
 }
 
 const TopologySettings = forwardRef<{}, {
@@ -174,13 +174,13 @@ const TopologySettings = forwardRef<{}, {
             title: "Value",
             key: "value",
             render: (value: any, record: ITopologySettingsRecord, index: number) => {
-                if (record.type === "string") {
+                if (typeof record.value === "string") {
                     return <Input defaultValue={record.value as string} onChange={e => props.onChange(record.key, e.target.value)} />
                 }
-                else if (record.type === "boolean") {
+                else if (typeof record.value === "boolean") {
                     return <Switch defaultChecked={value.value as boolean} onChange={e => props.onChange(record.key, e)} />
                 }
-                else if (record.type === "number") {
+                else if (typeof record.value === "number") {
                     return <InputNumber defaultValue={value.value as number} onChange={v => props.onChange(value.key, v)} />
                 }
                 return <div>{value.value}</div>
@@ -305,9 +305,6 @@ const TopologyAppInner = forwardRef<ITopologyAppRef, ITopologyAppProps>((props, 
             await refreshRef.current();
         }
     }
-    const onEditNode = (nodeKey: string) => {
-
-    }
     const removeKeyFromData = (data: IAnynomousNode[], key: string, settings: ITopologySettings) => {
         let result = data;
         if (data.some(item => item[settings.IDField ?? "key"] === key)) {
@@ -316,6 +313,21 @@ const TopologyAppInner = forwardRef<ITopologyAppRef, ITopologyAppProps>((props, 
         for (let item of result) {
             if (item.children && item.children.length > 0) {
                 item.children = removeKeyFromData(item.children, key, settings);
+            }
+        }
+        return result;
+    }
+    const getNodeFromData: (data: IAnynomousNode[], key: string, settings: ITopologySettings) => IAnynomousNode | undefined = (data: IAnynomousNode[], key: string, settings: ITopologySettings) => {
+        if (data.some(item => item[settings.IDField ?? "key"] === key)) {
+            return data.find(item => item[settings.IDField ?? "key"] === key);
+        }
+        let result = undefined;
+        for (let item of data) {
+            if (item.children && item.children.length > 0) {
+                result = getNodeFromData(item.children, key, settings);
+                if (result != undefined) {
+                    break;
+                }
             }
         }
         return result;
@@ -343,6 +355,65 @@ const TopologyAppInner = forwardRef<ITopologyAppRef, ITopologyAppProps>((props, 
         }
         setNodes(nodesRef.current.filter(n => n.id !== nodeKey));
     }
+    const onEditNode = async (nodeKey: string) => {
+        const settings = getSettings();
+        let node = nodesRef.current.find(n => n.id === nodeKey);
+        if (node == undefined) {
+            messageApi.error("Node not found");
+            return;
+        }
+        let raw = node.data.raw as IAnynomousNode;
+        if (raw[settings.IDField ?? "key"] == undefined) {
+            messageApi.error("Node key is undefined");
+            return;
+        }
+        let data = propsRef.current.data;
+        if (data == undefined) {
+            messageApi.error("Data is undefined");
+            return;
+        }
+        let nodeData = getNodeFromData(data, raw[settings.IDField ?? "key"], settings);
+        if (nodeData == undefined) {
+            messageApi.error("Node data not found");
+            return;
+        }
+        let nodeDataKeys = Object.keys(nodeData);
+        let tempSettings = nodeDataKeys.filter(key => key != "children").map(key => ({
+            key: key,
+            value: nodeData[key]
+        }));
+        let accept = await showModal(() => {
+            const [innerSettings, setInnerSettings] = useState(tempSettings);
+            useEffect(() => {
+                tempSettings = innerSettings;
+            }, [innerSettings]);
+            return <TopologySettings
+                data={innerSettings}
+                onChange={(key, value) => setInnerSettings(innerSettings.map(s => s.key === key ? { ...s, value: value } : s))} />
+        }, {
+            width: "80vw",
+            height: "65vh",
+            margin: "20px 0 0 0"
+        });
+        if (accept) {
+            for (let setting of tempSettings) {
+                nodeData[setting.key] = setting.value;
+            }
+            if (propsRef.current.onSaveData) {
+                await propsRef.current.onSaveData(data);
+            }
+            node.data.raw = nodeData;
+            node.data.label = <AnynomousView style={{
+                width: "100%",
+                height: "100%",
+            }} settings={settings}
+                data={nodeData}
+                onEdit={() => onEditNode(nodeKey)}
+                onClose={() => onCloseNode(nodeKey)} />;
+            setNodes([...nodesRef.current]);
+        }
+    }
+
     useEffect(() => {
         nodesRef.current = nodes;
         edgesRef.current = edges;
@@ -351,10 +422,11 @@ const TopologyAppInner = forwardRef<ITopologyAppRef, ITopologyAppProps>((props, 
         refreshRef.current(false);
     }, [props.settings]);
     useEffect(() => {
-        refreshRef.current(true);
+        refreshRef.current(false);
     }, [props.data]);
     useImperativeHandle(ref, () => ({
-        refresh: () => refreshRef.current()
+        fitView: onFitView,
+        refresh: refreshRef.current,
     }), []);
     return <div style={{
         display: "flex",

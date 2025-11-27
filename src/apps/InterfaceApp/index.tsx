@@ -10,7 +10,7 @@ import { IAnynomousNode, ITopologyAppRef, ITopologySettingsRecord, TopologyApp }
 import { pathUtils } from "../../services/utils";
 import { localServices } from "../../services/localServices";
 import { InterfaceEditor } from "../InterfaceEditor";
-import { TerminalApp } from "../TerminalApp";
+import { ITerminalAppRef, TerminalApp } from "../TerminalApp";
 
 loader.config({ monaco })
 
@@ -29,14 +29,15 @@ export const InterfaceApp = forwardRef<IInterfaceAppRef, IInterfaceAppProps>((pr
     const [mainTabSizes, updateMainTabSizes, mainTabSizesRef] = useUpdate<(number | undefined)[]>([300, undefined]);
     const [subTabSizes, updateSubTabSizes, subTabSizesRef] = useUpdate<(number | undefined)[]>([undefined, 300]);
     const [topologySettings, updateTopologySettings, topologySettingsRef] = useUpdate<ITopologySettingsRecord[]>([
-        { key: "EnableKeyField", value: true, type: "boolean" },
-        { key: "FilterKeyFields", value: "", type: "string" },
-        { key: "TitleField", value: "", type: "string" },
-        { key: "NodeWidth", value: 300, type: "number" },
-        { key: "NodeHeight", value: 180, type: "number" },
-        { key: "IDField", value: "key", type: "string" }
+        { key: "EnableKeyField", value: true},
+        { key: "FilterKeyFields", value: "" },
+        { key: "TitleField", value: "" },
+        { key: "NodeWidth", value: 300 },
+        { key: "NodeHeight", value: 180 },
+        { key: "IDField", value: "key" }
     ]);
     const topologyAppRef = useRef<ITopologyAppRef>(null);
+    const terminalAppRef = useRef<ITerminalAppRef>(null);
     const onSelectFile = async (path: string) => {
         let pathDirectoryName = pathUtils.getFileName(pathUtils.getDirectoryName(path));
         if (path.endsWith(".json")) {
@@ -51,6 +52,7 @@ export const InterfaceApp = forwardRef<IInterfaceAppRef, IInterfaceAppProps>((pr
                 updateEditorFilePath(undefined);
                 updateTopologyFilePath(path);
                 updateRightPanelType("topology");
+                topologyAppRef.current?.fitView();
             }
             else {
                 updateEditorFilePath(path);
@@ -124,7 +126,12 @@ export const InterfaceApp = forwardRef<IInterfaceAppRef, IInterfaceAppProps>((pr
         if (topologyFilePathRef.current == undefined) {
             return;
         }
+        let historyCount = await localServices.history.count(topologyFilePathRef.current);
+
         if (await localServices.file.fileExists(topologyFilePathRef.current)) {
+            if (historyCount == 0) {
+                await localServices.history.push(topologyFilePathRef.current, await localServices.file.read(topologyFilePathRef.current));
+            }
             await localServices.file.write(topologyFilePathRef.current, JSON.stringify(data));
         }
         updateTopologyData(data);
@@ -134,7 +141,11 @@ export const InterfaceApp = forwardRef<IInterfaceAppRef, IInterfaceAppProps>((pr
         if (topologyFilePathRef.current == undefined) {
             return;
         }
+        let historyCount = await localServices.history.count(topologyFilePathRef.current);
         if (await localServices.file.fileExists(topologyFilePathRef.current)) {
+            if (historyCount == 0) {
+                await localServices.history.push(topologyFilePathRef.current, await localServices.file.read(topologyFilePathRef.current));
+            }
             await localServices.file.write(topologyFilePathRef.current, JSON.stringify(data));
         }
         await localServices.history.push(topologyFilePathRef.current, JSON.stringify(data));
@@ -167,6 +178,15 @@ export const InterfaceApp = forwardRef<IInterfaceAppRef, IInterfaceAppProps>((pr
         await localServices.file.write(topologyFilePathRef.current, content);
         updateTopologyData(JSON.parse(content));
     }
+    useEffect(() => {
+        if (interfacePathRef.current == undefined || interfacePathRef.current == "") {
+            return;
+        }
+        let terminalRef = terminalAppRef.current;
+        if (terminalRef) {
+            terminalRef.cd(interfacePathRef.current);
+        }
+    }, [interfacePath]);
     return (
         <div style={{
             display: "flex",
@@ -225,7 +245,7 @@ export const InterfaceApp = forwardRef<IInterfaceAppRef, IInterfaceAppProps>((pr
                                 />
                             </Splitter.Panel>
                             <Splitter.Panel size={subTabSizes[1]}>
-                                <TerminalApp />
+                                <TerminalApp ref={terminalAppRef} />
                             </Splitter.Panel>
                         </Splitter>
                     </div>

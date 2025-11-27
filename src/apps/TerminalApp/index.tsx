@@ -1,5 +1,5 @@
 import { Button, Dropdown, List, Splitter, Tabs } from "antd";
-import { forwardRef, useEffect, useRef } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
 import { Terminal } from "xterm";
 import { FitAddon } from "xterm-addon-fit";
 import "xterm/css/xterm.css";
@@ -21,6 +21,7 @@ export interface ITerminalAppProps {
     style?: React.CSSProperties;
 }
 export interface ITerminalAppRef {
+    cd: (path: string) => Promise<void>;
 }
 export const TerminalApp = forwardRef<ITerminalAppRef, ITerminalAppProps>((props, ref) => {
     const [tabs, updateTabs, tabsRef] = useUpdate<{
@@ -28,7 +29,7 @@ export const TerminalApp = forwardRef<ITerminalAppRef, ITerminalAppProps>((props
         key: string;
     }[]>([]);
     const [splitSizes, updateSplitSizes] = useUpdate<(number | undefined)[]>([undefined, 120]);
-    const [activeTab, updateActiveTab] = useUpdate<string>("");
+    const [activeTab, updateActiveTab, activeTabRef] = useUpdate<string>("");
     const terminalsRef = useRef<{
         [key: string]: {
             terminal: Terminal;
@@ -183,6 +184,54 @@ export const TerminalApp = forwardRef<ITerminalAppRef, ITerminalAppProps>((props
             // terminalRef.terminal.refresh(0, terminalRef.terminal.rows - 1);
         }
     };
+    const onCopy = async () => {
+        let terminalRef = terminalsRef.current[activeTab];
+        if (terminalRef) {
+            console.log(`Copy: ${terminalRef.terminal.getSelection()}`);
+            await navigator.clipboard.writeText(terminalRef.terminal.getSelection());
+        }
+        else {
+            console.error(`onCopy: Terminal ${activeTab} not found`);
+        }
+    };
+    const onPaste = async () => {
+        async () => {
+            let terminalRef = terminalsRef.current[activeTab];
+            if (terminalRef) {
+                await navigator.clipboard.readText().then(text => {
+                    console.log(`Paste: ${text}`);
+                    terminalEndRef.current?.send(activeTabRef.current, text);
+                });
+            }
+            else {
+                console.error(`onPaste: Terminal ${activeTab} not found`);
+            }
+        }
+    }
+    useImperativeHandle(ref, () => ({
+        cd: async (path: string) => {
+            let terminalEnd = terminalEndRef.current;
+            if (Object.keys(terminalsRef.current).length == 0) {
+                if (terminalEnd) {
+                    let id = await terminalEnd.create({
+                        workingDirectory: path,
+                    });
+                    addTab(terminalEnd, id);
+                    updateActiveTab(id);
+                }
+            }
+            else {
+                let terminalRef = terminalsRef.current[activeTab];
+                if (terminalRef == undefined && Object.keys(terminalsRef.current).length > 0) {
+                    updateActiveTab(Object.keys(terminalsRef.current)[0]);
+                    terminalRef = terminalsRef.current[Object.keys(terminalsRef.current)[0]];
+                }
+                if (terminalRef) {
+                    terminalEnd?.send(activeTabRef.current, `cd "${path}"\r`);
+                }
+            }
+        }
+    }), []);
     useEffect(() => {
         initializeRef.current();
     }, []);
@@ -202,33 +251,13 @@ export const TerminalApp = forwardRef<ITerminalAppRef, ITerminalAppProps>((props
                             label: "Copy",
                             key: "copy",
                             icon: <CopyOutlined />,
-                            onClick: async () => {
-                                let terminalRef = terminalsRef.current[activeTab];
-                                if (terminalRef) {
-                                    console.log(`Copy: ${terminalRef.terminal.getSelection()}`);
-                                    await navigator.clipboard.writeText(terminalRef.terminal.getSelection());
-                                }
-                                else {
-                                    console.error(`onCopy: Terminal ${activeTab} not found`);
-                                }
-                            }
+                            onClick: onCopy
                         },
                         {
                             label: "Paste",
                             key: "paste",
                             icon: <PlusOutlined />,
-                            onClick: async () => {
-                                let terminalRef = terminalsRef.current[activeTab];
-                                if (terminalRef) {
-                                    await navigator.clipboard.readText().then(text => {
-                                        console.log(`Paste: ${text}`);
-                                        terminalRef.terminal.write(text);
-                                    });
-                                }
-                                else {
-                                    console.error(`onPaste: Terminal ${activeTab} not found`);
-                                }
-                            }
+                            onClick: onPaste
                         }
                     ]
                 }}>

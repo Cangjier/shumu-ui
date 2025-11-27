@@ -332,10 +332,11 @@ const LocalServices = () => {
             }));
         }
         const save = async (id: string, data: any) => {
-            await api.post("/api/v1/terminal/save", {
+            ws?.send(JSON.stringify({
+                url: "/api/v1/terminal/save",
                 terminalID: id,
                 data
-            });
+            }));
         }
         const load = async (id: string) => {
             let response = await api.get("/api/v1/terminal/load", {
@@ -388,10 +389,20 @@ const LocalServices = () => {
                 content: string
             }).content;
         }
+        const count = async (path: string) => {
+            let response = await run("history", {
+                action: "count",
+                path
+            });
+            return (response as {
+                count: number
+            }).count;
+        }
         return {
             push,
             undo,
-            redo
+            redo,
+            count
         }
     }
     const history = historyConstructor();
