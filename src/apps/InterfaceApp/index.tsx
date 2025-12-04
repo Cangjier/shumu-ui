@@ -29,7 +29,7 @@ export const InterfaceApp = forwardRef<IInterfaceAppRef, IInterfaceAppProps>((pr
     const [mainTabSizes, updateMainTabSizes, mainTabSizesRef] = useUpdate<(number | undefined)[]>([300, undefined]);
     const [subTabSizes, updateSubTabSizes, subTabSizesRef] = useUpdate<(number | undefined)[]>([undefined, 300]);
     const [topologySettings, updateTopologySettings, topologySettingsRef] = useUpdate<ITopologySettingsRecord[]>([
-        { key: "EnableKeyField", value: true},
+        { key: "EnableKeyField", value: true },
         { key: "FilterKeyFields", value: "" },
         { key: "TitleField", value: "" },
         { key: "NodeWidth", value: 300 },
@@ -178,6 +178,26 @@ export const InterfaceApp = forwardRef<IInterfaceAppRef, IInterfaceAppProps>((pr
         await localServices.file.write(topologyFilePathRef.current, content);
         updateTopologyData(JSON.parse(content));
     }
+    const onGenerate = async (commandLine: string) => {
+        if (topologyFilePathRef.current) {
+            let historyCount = await localServices.history.count(topologyFilePathRef.current);
+            if (await localServices.file.fileExists(topologyFilePathRef.current)) {
+                if (historyCount == 0) {
+                    await localServices.history.push(topologyFilePathRef.current, await localServices.file.read(topologyFilePathRef.current));
+                }
+            }
+            commandLine = commandLine.replace("{file_path}", topologyFilePathRef.current.replace(/\\/g, "/") ?? "");
+            await terminalAppRef.current?.executeCommand(commandLine);
+            let data = JSON.parse(await localServices.file.read(topologyFilePathRef.current));
+            if (Array.isArray(data)) {
+                updateTopologyData(data);
+            }
+            else {
+                updateTopologyData([data]);
+            }
+            await localServices.history.push(topologyFilePathRef.current, JSON.stringify(data));
+        }
+    }
     useEffect(() => {
         if (interfacePathRef.current == undefined || interfacePathRef.current == "") {
             return;
@@ -242,6 +262,7 @@ export const InterfaceApp = forwardRef<IInterfaceAppRef, IInterfaceAppProps>((pr
                                     onSaveData={onSaveTopologyData}
                                     onUndo={onUndoTopologyData}
                                     onRedo={onRedoTopologyData}
+                                    onGenerate={onGenerate}
                                 />
                             </Splitter.Panel>
                             <Splitter.Panel size={subTabSizes[1]}>

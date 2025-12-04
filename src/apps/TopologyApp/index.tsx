@@ -17,9 +17,12 @@ import {
 } from '@xyflow/react';
 
 import '@xyflow/react/dist/style.css';
-import { CloseOutlined, EditOutlined, ExpandOutlined, RedoOutlined, SettingOutlined, UndoOutlined } from "@ant-design/icons";
-import { InputNumber, Input, Switch, Table, InputRef, message } from "antd";
+import Icon, { CloseOutlined, EditOutlined, ExpandOutlined, InfoCircleOutlined, RedoOutlined, SettingOutlined, UndoOutlined } from "@ant-design/icons";
+import { InputNumber, Input, Switch, Table, InputRef, message, Tooltip, Spin } from "antd";
 import { ColumnProps } from "antd/es/table";
+import { TableApp } from "../TableApp";
+import GenerateSvg from "../../svgs/Generate.svg?react";
+import { localServices } from "../../services/localServices";
 
 const elk = new ELK();
 
@@ -38,6 +41,7 @@ const AnynomousView = forwardRef<{}, {
     data: IAnynomousNode;
     onClose?: () => void;
     onEdit?: () => void;
+    onGenerate?: () => void;
 }>((props, ref) => {
     let keys = Object.keys(props.data).filter(key => key !== "children" &&
         key !== "key" &&
@@ -71,8 +75,9 @@ const AnynomousView = forwardRef<{}, {
             flexDirection: "row",
             gap: "10px"
         }}>
-            <EditOutlined onClick={() => props.onEdit?.()} />
-            <CloseOutlined onClick={() => props.onClose?.()} />
+            <Tooltip title="Edit"><EditOutlined onClick={() => props.onEdit?.()} /></Tooltip>
+            <Tooltip title="Close"><CloseOutlined onClick={() => props.onClose?.()} /></Tooltip>
+            <Tooltip title="Generate"><Icon component={GenerateSvg} onClick={() => props.onGenerate?.()} /></Tooltip>
         </div>
     </div>
 });
@@ -142,6 +147,7 @@ export interface ITopologyAppProps {
     onChangeSettings: (settings: ITopologySettingsRecord[]) => Promise<void>;
     onUndo: () => Promise<void>;
     onRedo: () => Promise<void>;
+    onGenerate?: (commandLine: string) => Promise<void>;
 }
 
 export interface ITopologyAppRef {
@@ -157,25 +163,46 @@ export interface IAnynomousNode {
 export interface ITopologySettingsRecord {
     key: string;
     value: string | boolean | number;
+    description?: string;
+    placeholder?: string;
+
 }
 
 const TopologySettings = forwardRef<{}, {
     style?: React.CSSProperties;
     data: ITopologySettingsRecord[];
     onChange: (key: string, value: any) => void;
+    keyWidth?: number | string;
 }>((props, ref) => {
     const columns: ColumnProps<ITopologySettingsRecord>[] = [
         {
             title: "Key",
-            dataIndex: "key",
             key: "key",
+            width: props.keyWidth,
+            render: (value: any, record: ITopologySettingsRecord, index: number) => {
+                if (record.description) {
+                    return <div style={{
+                        display: "flex",
+                        flexDirection: "row",
+                        gap: "5px"
+                    }}>
+                        <div>{value.key}</div>
+                        <Tooltip title={record.description}>
+                            <InfoCircleOutlined />
+                        </Tooltip>
+                    </div>
+                }
+                else {
+                    return <div>{value.key}</div>
+                }
+            }
         },
         {
             title: "Value",
             key: "value",
             render: (value: any, record: ITopologySettingsRecord, index: number) => {
                 if (typeof record.value === "string") {
-                    return <Input defaultValue={record.value as string} onChange={e => props.onChange(record.key, e.target.value)} />
+                    return <Input defaultValue={record.value as string} placeholder={record.placeholder} onChange={e => props.onChange(record.key, e.target.value)} />
                 }
                 else if (typeof record.value === "boolean") {
                     return <Switch defaultChecked={value.value as boolean} onChange={e => props.onChange(record.key, e)} />
@@ -190,9 +217,14 @@ const TopologySettings = forwardRef<{}, {
     return <div style={{
         display: "flex",
         flexDirection: "column",
+        width: "100%",
+        height: "100%",
         ...props.style
     }}>
-        <Table columns={columns} dataSource={props.data} />
+        <TableApp style={{
+            flex: 1,
+            height: 0
+        }} columns={columns} dataSource={props.data} />
     </div>
 });
 
@@ -205,6 +237,44 @@ const TopologyAppInner = forwardRef<ITopologyAppRef, ITopologyAppProps>((props, 
     const [edges, setEdges, onEdgesChange] = useEdgesState<any>([]);
     const nodesRef = useRef<Node<IAnynomousData>[]>([]);
     const edgesRef = useRef<Edge[]>([]);
+    const [loading, updateLoading, loadingRef] = useUpdate<{
+        loading: number;
+        percent?: number;
+        message?: string;
+    }>({
+        loading: 0,
+        percent: undefined,
+        message: undefined,
+    });
+    const Try = async (options: {
+        useLoading?: boolean
+    }, callback: () => Promise<void>) => {
+        if (options.useLoading) {
+            updateLoading(old => ({ ...old, loading: old.loading + 1 }));
+        }
+        try {
+            await callback();
+        } catch (error) {
+            let isInnerError = false;
+            if (options.useLoading && loadingRef.current.loading > 1) {
+                isInnerError = true;
+            }
+            if (isInnerError) {
+                throw error;
+            }
+            else {
+                if (error instanceof Error) {
+                    messageApi.error(error.message);
+                } else {
+                    messageApi.error("Unknown error");
+                }
+            }
+        } finally {
+            if (options.useLoading) {
+                updateLoading(old => ({ ...old, loading: old.loading - 1 }));
+            }
+        }
+    };
     const onConnect = useCallback((params: any) => setEdges((eds: any) => addEdge(params, eds) as any), []);
     const getSettings: () => ITopologySettings = () => {
         const getSetting = (key: string) => {
@@ -239,7 +309,9 @@ const TopologyAppInner = forwardRef<ITopologyAppRef, ITopologyAppProps>((props, 
                     }} settings={settings}
                         data={item}
                         onEdit={() => onEditNode(itemKey)}
-                        onClose={() => onCloseNode(itemKey)} />,
+                        onClose={() => onCloseNode(itemKey)}
+                        onGenerate={() => onGenertate(itemKey)}
+                    />,
                     parentKey: parentKey,
                     isRoot: parentKey === undefined,
                     hasChildren: (item.children && item.children.length > 0) ?? false,
@@ -413,6 +485,62 @@ const TopologyAppInner = forwardRef<ITopologyAppRef, ITopologyAppProps>((props, 
             setNodes([...nodesRef.current]);
         }
     }
+    const onGenertate = async (nodeKey: string) => {
+        const settings = getSettings();
+        let node = nodesRef.current.find(n => n.id === nodeKey);
+        if (node == undefined) {
+            messageApi.error("Node not found");
+            return;
+        }
+        let raw = node.data.raw as IAnynomousNode;
+        if (raw[settings.IDField ?? "key"] == undefined) {
+            messageApi.error("Node key is undefined");
+            return;
+        }
+        let cacheCommandLine = await localServices.file.readAppdata("topology.generate.commandline.txt");
+        let tempSettings = [
+            {
+                key: "Command Line",
+                value: cacheCommandLine ?? "",
+                placeholder: "such as: your.exe generate -i {file_path} -k {key}",
+                description: [`The command line to generate the node,`,
+                    `{key} will be replaced with the node key,`,
+                    `{file_path} will be replaced with the file path,`,
+                    `{prompt} will be replaced with the prompt`
+                ].join("\n")
+            },
+            {
+                key: "Prompt",
+                value: ""
+            }
+        ] as ITopologySettingsRecord[];
+        let accept = await showModal(() => {
+            const [innerSettings, setInnerSettings] = useState(tempSettings);
+            useEffect(() => {
+                tempSettings = innerSettings;
+            }, [innerSettings]);
+            return <TopologySettings
+                data={innerSettings}
+                onChange={(key, value) => setInnerSettings(innerSettings.map(s => s.key === key ? { ...s, value: value } : s))} />
+        }, {
+            width: "80vw",
+            height: "65vh",
+            margin: "20px 0 0 0"
+        });
+        let commandLine = tempSettings.find(s => s.key === "Command Line")?.value as string;
+        let prompt = tempSettings.find(s => s.key === "Prompt")?.value as string;
+        if (accept && commandLine) {
+            await Try({
+                useLoading: true
+            }, async () => {
+                await localServices.file.writeAppdata("topology.generate.commandline.txt", commandLine);
+                commandLine = commandLine.replace("{key}", raw[settings.IDField ?? "key"]);
+                commandLine = commandLine.replace("{prompt}", prompt);
+                await propsRef.current.onGenerate?.(commandLine);
+
+            });
+        }
+    }
 
     useEffect(() => {
         nodesRef.current = nodes;
@@ -431,6 +559,7 @@ const TopologyAppInner = forwardRef<ITopologyAppRef, ITopologyAppProps>((props, 
     return <div style={{
         display: "flex",
         flexDirection: "column",
+        position: "relative",
         ...propsRef.current.style
     }}>
         {modalContainer}
@@ -456,14 +585,26 @@ const TopologyAppInner = forwardRef<ITopologyAppRef, ITopologyAppProps>((props, 
                     flexDirection: "row",
                     gap: "10px"
                 }}>
-                    <ExpandOutlined onClick={onFitView} />
-                    <UndoOutlined onClick={() => propsRef.current.onUndo?.()} />
-                    <RedoOutlined onClick={() => propsRef.current.onRedo?.()} />
-                    <SettingOutlined onClick={onOpenSettings} />
+                    <Tooltip placement="bottomLeft" title="Fit View"><ExpandOutlined onClick={onFitView} /></Tooltip>
+                    <Tooltip placement="bottomLeft" title="Undo"><UndoOutlined onClick={() => propsRef.current.onUndo?.()} /></Tooltip>
+                    <Tooltip placement="bottomLeft" title="Redo"><RedoOutlined onClick={() => propsRef.current.onRedo?.()} /></Tooltip>
+                    <Tooltip placement="bottomLeft" title="Settings"><SettingOutlined onClick={onOpenSettings} /></Tooltip>
                 </div>
             </Panel>
             <Background />
         </ReactFlow>
+        <div style={{
+            position: "absolute",
+            display: loading.loading > 0 ? "flex" : "none",
+            flexDirection: "row",
+            alignItems: "center",
+            justifyContent: "center",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: "rgba(0, 0, 0, 0.5)",
+        }}><Spin tip={loading.message} percent={loading.percent} /></div>
     </div>
 });
 

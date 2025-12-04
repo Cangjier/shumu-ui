@@ -22,6 +22,7 @@ export interface ITerminalAppProps {
 }
 export interface ITerminalAppRef {
     cd: (path: string) => Promise<void>;
+    executeCommand: (command: string) => Promise<void>;
 }
 export const TerminalApp = forwardRef<ITerminalAppRef, ITerminalAppProps>((props, ref) => {
     const [tabs, updateTabs, tabsRef] = useUpdate<{
@@ -40,6 +41,7 @@ export const TerminalApp = forwardRef<ITerminalAppRef, ITerminalAppProps>((props
             resizeObserver: ResizeObserver | null
         }
     }>({});
+    const listensRef = useRef<((id: string, bytes: Uint8Array) => void)[]>([]);
     const terminalEndRef = useRef<ITerminalConstructor | null>(null);
     const delayedSaverRef = useRef<DelayedSaver<ITerminalState> | null>(null);
     const saveTerminal = (id: string) => {
@@ -62,6 +64,7 @@ export const TerminalApp = forwardRef<ITerminalAppRef, ITerminalAppProps>((props
             if (terminalFront) {
                 terminalEndRef.current?.debug(`terminal-write: ${id}, ${bytes.length}bytes`);
                 terminalFront.terminal.write(bytes);
+                listensRef.current.forEach(listen => listen(id, bytes));
                 saveTerminal(id);
             }
         });
@@ -207,30 +210,76 @@ export const TerminalApp = forwardRef<ITerminalAppRef, ITerminalAppProps>((props
                 console.error(`onPaste: Terminal ${activeTab} not found`);
             }
         }
-    }
-    useImperativeHandle(ref, () => ({
-        cd: async (path: string) => {
-            let terminalEnd = terminalEndRef.current;
-            if (Object.keys(terminalsRef.current).length == 0) {
-                if (terminalEnd) {
-                    let id = await terminalEnd.create({
-                        workingDirectory: path,
-                    });
-                    addTab(terminalEnd, id);
-                    updateActiveTab(id);
-                }
-            }
-            else {
-                let terminalRef = terminalsRef.current[activeTab];
-                if (terminalRef == undefined && Object.keys(terminalsRef.current).length > 0) {
-                    updateActiveTab(Object.keys(terminalsRef.current)[0]);
-                    terminalRef = terminalsRef.current[Object.keys(terminalsRef.current)[0]];
-                }
-                if (terminalRef) {
-                    terminalEnd?.send(activeTabRef.current, `cd "${path}"\r`);
-                }
+    };
+    const getActiveTerminal = async (path?: string) => {
+        let terminalEnd = terminalEndRef.current;
+        if (Object.keys(terminalsRef.current).length == 0) {
+            if (terminalEnd) {
+                let id = await terminalEnd.create({
+                    workingDirectory: path,
+                });
+                addTab(terminalEnd, id);
+                updateActiveTab(id);
             }
         }
+        else {
+            let terminalRef = terminalsRef.current[activeTab];
+            if (terminalRef == undefined && Object.keys(terminalsRef.current).length > 0) {
+                updateActiveTab(Object.keys(terminalsRef.current)[0]);
+                terminalRef = terminalsRef.current[Object.keys(terminalsRef.current)[0]];
+            }
+        }
+        return {
+            activeTab: activeTabRef.current,
+            ...terminalsRef.current[activeTabRef.current]
+        }
+    }
+    const onCD = async (path: string) => {
+        let terminalEnd = terminalEndRef.current;
+        if (Object.keys(terminalsRef.current).length == 0) {
+            if (terminalEnd) {
+                let id = await terminalEnd.create({
+                    workingDirectory: path,
+                });
+                addTab(terminalEnd, id);
+                updateActiveTab(id);
+            }
+        }
+        else {
+            let terminalRef = terminalsRef.current[activeTab];
+            if (terminalRef == undefined && Object.keys(terminalsRef.current).length > 0) {
+                updateActiveTab(Object.keys(terminalsRef.current)[0]);
+                terminalRef = terminalsRef.current[Object.keys(terminalsRef.current)[0]];
+            }
+            if (terminalRef) {
+                terminalEnd?.send(activeTabRef.current, `cd "${path}"\r`);
+            }
+        }
+    }
+    const executeCommand = async (command: string) => {
+        let terminalRef = await getActiveTerminal();
+        let done = `done-${Date.now()}`;
+
+        let buffer = "";
+        let promiseResolve: (value: string | PromiseLike<string>) => void = () => { };
+        const promise = new Promise<string>((resolve, reject) => {
+            promiseResolve = resolve;
+        });
+        const listen = (id: string, bytes: Uint8Array) => {
+            if (id !== terminalRef.activeTab) return;
+            buffer += String.fromCharCode(...bytes);
+            if (buffer.includes(`\n${done}`)) {
+                promiseResolve("");
+            }
+        }
+        listensRef.current.push(listen);
+        await terminalRef.terminalEnd.send(terminalRef.activeTab, `${command} && echo ${done}\r`);
+        await promise;
+        listensRef.current = listensRef.current.filter(listen => listen !== listen);
+    }
+    useImperativeHandle(ref, () => ({
+        cd: onCD,
+        executeCommand: executeCommand
     }), []);
     useEffect(() => {
         initializeRef.current();
