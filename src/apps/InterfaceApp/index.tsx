@@ -6,11 +6,13 @@ import { Editor, loader } from "@monaco-editor/react";
 import * as monaco from 'monaco-editor'
 import { historyAppActions, pushHistory } from "../ProjectsApp";
 import { clientServices } from "../../services/clientServices";
-import { IAnynomousNode, ITopologyAppRef, ITopologySettingsRecord, TopologyApp } from "../TopologyApp";
+import { IAnynomousNode, ITopologyAppRef, TopologyApp } from "../TopologyApp";
 import { pathUtils } from "../../services/utils";
 import { localServices } from "../../services/localServices";
 import { InterfaceEditor } from "../InterfaceEditor";
 import { ITerminalAppRef, TerminalApp } from "../TerminalApp";
+import { ITableSettingsRecord } from "../TableSettingsApp";
+import { getInterfaceSettingRecords } from "../InterfaceSettings";
 
 loader.config({ monaco })
 
@@ -28,14 +30,7 @@ export const InterfaceApp = forwardRef<IInterfaceAppRef, IInterfaceAppProps>((pr
     const [topologyData, updateTopologyData, topologyDataRef] = useUpdate<IAnynomousNode[]>([]);
     const [mainTabSizes, updateMainTabSizes, mainTabSizesRef] = useUpdate<(number | undefined)[]>([300, undefined]);
     const [subTabSizes, updateSubTabSizes, subTabSizesRef] = useUpdate<(number | undefined)[]>([undefined, 300]);
-    const [topologySettings, updateTopologySettings, topologySettingsRef] = useUpdate<ITopologySettingsRecord[]>([
-        { key: "EnableKeyField", value: true },
-        { key: "FilterKeyFields", value: "" },
-        { key: "TitleField", value: "" },
-        { key: "NodeWidth", value: 300 },
-        { key: "NodeHeight", value: 180 },
-        { key: "IDField", value: "key" }
-    ]);
+    const [interfaceSettings, updateInterfaceSettings, interfaceSettingsRef] = useUpdate<ITableSettingsRecord[]>(getInterfaceSettingRecords());
     const topologyAppRef = useRef<ITopologyAppRef>(null);
     const terminalAppRef = useRef<ITerminalAppRef>(null);
     const onSelectFile = async (path: string) => {
@@ -83,18 +78,31 @@ export const InterfaceApp = forwardRef<IInterfaceAppRef, IInterfaceAppProps>((pr
         };
     }, []);
     useEffect(() => {
-        onInitializeTopologySettings();
+        onInitializeInterfaceSettings();
     }, [interfacePath]);
     useEffect(() => {
-        onInitializeTopologySettings();
+        onInitializeInterfaceSettings();
     }, []);
-    const onInitializeTopologySettings = async () => {
+    const onInitializeInterfaceSettings = async () => {
         let settingsFilePath = `${interfacePathRef.current}/settings.json`;
         if (await localServices.file.fileExists(settingsFilePath)) {
             let settings = await localServices.file.read(settingsFilePath);
             if (settings) {
-                let cacheSettings = (JSON.parse(settings)["topology"] ?? []) as ITopologySettingsRecord[];
-                updateTopologySettings(old => {
+                let cacheSettings = [] as ITableSettingsRecord[];
+                let settingsObject = JSON.parse(settings);
+                let settingCatalogKeys = Object.keys(settingsObject);
+                for (let settingCatalogKey of settingCatalogKeys) {
+                    let settingCatalog = settingsObject[settingCatalogKey];
+                    if (Array.isArray(settingCatalog)) {
+                        for (let setting of settingCatalog) {
+                            cacheSettings.push({
+                                key: `${settingCatalogKey}.${setting.key}`,
+                                value: setting.value
+                            });
+                        }
+                    }
+                }
+                updateInterfaceSettings(old => {
                     return old.map(s => {
                         let cacheSetting = cacheSettings.find(c => c.key === s.key);
                         return cacheSetting ? { ...s, ...cacheSetting } : s;
@@ -103,23 +111,29 @@ export const InterfaceApp = forwardRef<IInterfaceAppRef, IInterfaceAppProps>((pr
             }
         }
     }
-    const onChangeTopologySettings = async (settings: ITopologySettingsRecord[]) => {
+    const onChangeInterfaceSettings = async (settings: ITableSettingsRecord[]) => {
         if (interfacePathRef.current == undefined) {
             return;
         }
         if (await localServices.file.directoryExists(interfacePathRef.current)) {
             let settingsFilePath = `${interfacePathRef.current}/settings.json`;
-            let originalSettings: {
-                topology: ITopologySettingsRecord[]
-            } = {
-                topology: []
-            };
-            if (await localServices.file.fileExists(settingsFilePath)) {
-                originalSettings = JSON.parse(await localServices.file.read(settingsFilePath));
+            let allSettings: { [key: string]: ITableSettingsRecord[] } = {};
+            for (let setting of settings) {
+                if (setting.key.includes(".") == false) {
+                    continue;
+                }
+                let catalogKey = setting.key.substring(0, setting.key.indexOf("."));
+                let settingKey = setting.key.substring(setting.key.indexOf(".") + 1);
+                if (!allSettings[catalogKey]) {
+                    allSettings[catalogKey] = [];
+                }
+                allSettings[catalogKey].push({
+                    ...setting,
+                    key: settingKey,
+                });
             }
-            originalSettings.topology = settings;
-            await localServices.file.write(settingsFilePath, JSON.stringify(originalSettings));
-            updateTopologySettings(settings);
+            await localServices.file.write(settingsFilePath, JSON.stringify(allSettings));
+            updateInterfaceSettings(settings);
         }
     }
     const onChangeTopologyData = async (data: IAnynomousNode[]) => {
@@ -198,6 +212,9 @@ export const InterfaceApp = forwardRef<IInterfaceAppRef, IInterfaceAppProps>((pr
             await localServices.history.push(topologyFilePathRef.current, JSON.stringify(data));
         }
     }
+    const onExecuteCommand = async (command: string) => {
+        await terminalAppRef.current?.executeCommand(command);
+    }
     useEffect(() => {
         if (interfacePathRef.current == undefined || interfacePathRef.current == "") {
             return;
@@ -221,7 +238,10 @@ export const InterfaceApp = forwardRef<IInterfaceAppRef, IInterfaceAppProps>((pr
             }}>
                 <Splitter.Panel size={mainTabSizes[0]} min={"20%"} max={"50%"}>
                     <InterfaceNavigatorApp interfacePath={interfacePath}
+                        settings={interfaceSettings}
+                        onChangeSettings={onChangeInterfaceSettings}
                         onSelectFile={onSelectFile}
+                        executeCommand={onExecuteCommand}
                         onChangeInterfacePath={async (path) => {
                             console.log("Interface path changed to:", path);
                             await pushHistory(path, true);
@@ -256,8 +276,8 @@ export const InterfaceApp = forwardRef<IInterfaceAppRef, IInterfaceAppProps>((pr
                                     }}
                                     ref={topologyAppRef}
                                     data={topologyData}
-                                    settings={topologySettings}
-                                    onChangeSettings={onChangeTopologySettings}
+                                    settings={interfaceSettings}
+                                    onChangeSettings={onChangeInterfaceSettings}
                                     onChangeData={onChangeTopologyData}
                                     onSaveData={onSaveTopologyData}
                                     onUndo={onUndoTopologyData}

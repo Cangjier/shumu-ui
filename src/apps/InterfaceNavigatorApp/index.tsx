@@ -1,4 +1,4 @@
-import { PlusOutlined, RedoOutlined } from "@ant-design/icons";
+import { FolderOpenOutlined, PlusOutlined, RedoOutlined, SettingOutlined } from "@ant-design/icons";
 import { Button, message, Spin, Tree, TreeDataNode } from "antd";
 import { forwardRef, Key, useEffect, useRef, useState } from "react";
 import { IFileNode } from "../../services/interfaces";
@@ -9,12 +9,17 @@ import InterfaceSVG from "../../svgs/Interface.svg?react";
 import { FileDialog } from "../FileDialog";
 import { pathUtils, useModal } from "../../services/utils";
 import { EventDataNode } from "antd/es/tree";
+import { ITableSettingsRecord, TableSettingsApp } from "../TableSettingsApp";
+import { getInterfaceSettings, openInterfaceSettings } from "../InterfaceSettings";
 
 export interface IInterfaceNavigatorAppProps {
     style?: React.CSSProperties;
     interfacePath: string | undefined;
     onChangeInterfacePath: (path: string) => void;
     onSelectFile: (path: string) => void;
+    settings: ITableSettingsRecord[];
+    onChangeSettings: (settings: ITableSettingsRecord[]) => Promise<void>;
+    executeCommand: (command: string) => Promise<void>;
 }
 export interface IInterfaceNavigatorAppRef {
 
@@ -145,6 +150,25 @@ export const InterfaceNavigatorApp = forwardRef<IInterfaceNavigatorAppRef, IInte
     const onRefresh = async () => {
         await refreshRef.current();
     };
+    const onOpenProjectSettings = async () => {
+        let result = await openInterfaceSettings({
+            settings: propsRef.current.settings,
+            showModal: showModal,
+            onFilterKey: key => key.startsWith("Project."),
+            mapKeys: {
+                "Project.OpenWorkspaceCommandLine": "Open Workspace Command Line",
+            }
+        });
+        if (result) {
+            propsRef.current.onChangeSettings(result.interfaceSettings);
+        }
+    }
+    const onOpenWorkspace = async () => {
+        let settings = getInterfaceSettings(propsRef.current.settings);
+        let commandLine = settings.Project.OpenWorkspaceCommandLine ?? "";
+        commandLine = commandLine.replace("{file_path}", propsRef.current.interfacePath ?? "");
+        await propsRef.current.executeCommand(commandLine);
+    }
     return (
         <div style={{
             display: 'flex',
@@ -170,6 +194,14 @@ export const InterfaceNavigatorApp = forwardRef<IInterfaceNavigatorAppRef, IInte
                     type="text"
                     icon={<RedoOutlined />}
                     onClick={onRefresh} />
+                <Button size={"small"}
+                    type="text"
+                    icon={<FolderOpenOutlined />}
+                    onClick={onOpenWorkspace} />
+                <Button size={"small"}
+                    type="text"
+                    icon={<SettingOutlined />}
+                    onClick={onOpenProjectSettings} />
             </div>
             <div style={{
                 flex: 1,

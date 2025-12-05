@@ -36,7 +36,12 @@ export interface IUseModalOptions {
     onOkPredicate?: () => Promise<boolean>,
 }
 
-export function useModal() {
+export type IShowModal = (render: (self: RefObject<IUseModalSelf>) => React.ReactNode, options?: IUseModalOptions) => Promise<boolean>;
+
+export function useModal():{
+    showModal: IShowModal;
+    modalContainer: React.ReactNode;
+} {
     const [visible, setVisible] = useState(false);
     const resolver = useRef<((value: boolean) => void) | null>(null);
     const [content, setContent] = useState<React.ReactNode | undefined>(undefined);
