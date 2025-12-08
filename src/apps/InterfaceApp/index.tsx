@@ -28,16 +28,50 @@ export const InterfaceApp = forwardRef<IInterfaceAppRef, IInterfaceAppProps>((pr
     const [editorFilePath, updateEditorFilePath, editorFilePathRef] = useUpdate<string | undefined>(undefined);
     const [topologyFilePath, updateTopologyFilePath, topologyFilePathRef] = useUpdate<string | undefined>(undefined);
     const [topologyData, updateTopologyData, topologyDataRef] = useUpdate<IAnynomousNode[]>([]);
+    const [topologyCollapsedKeys, updateTopologyCollapsedKeys, topologyCollapsedKeysRef] = useUpdate<string[]>([]);
     const [mainTabSizes, updateMainTabSizes, mainTabSizesRef] = useUpdate<(number | undefined)[]>([300, undefined]);
     const [subTabSizes, updateSubTabSizes, subTabSizesRef] = useUpdate<(number | undefined)[]>([undefined, 300]);
     const [interfaceSettings, updateInterfaceSettings, interfaceSettingsRef] = useUpdate<ITableSettingsRecord[]>(getInterfaceSettingRecords());
     const topologyAppRef = useRef<ITopologyAppRef>(null);
     const terminalAppRef = useRef<ITerminalAppRef>(null);
+    const isValidTopologyData = (data: any): boolean => {
+        if (Array.isArray(data)) {
+            return data.every(item => {
+                return isValidTopologyData(item);
+            });
+        }
+        else if (typeof data === "object" && data !== null) {
+            return Object.keys(data).every((key: string) => {
+                if (key == "children") {
+                    if (Array.isArray(data[key])) {
+                        return data[key].every(item => {
+                            return isValidTopologyData(item);
+                        });
+                    }
+                    else {
+                        return false;
+                    }
+                }
+                else {
+                    if (typeof data[key] === "string") {
+                        return true;
+                    }
+                    else {
+                        return false;
+                    }
+                }
+            });
+        }
+        else {
+            return false;
+        }
+    };
     const onSelectFile = async (path: string) => {
         let pathDirectoryName = pathUtils.getFileName(pathUtils.getDirectoryName(path));
         if (path.endsWith(".json")) {
-            if (pathDirectoryName == "cases") {
-                let data = JSON.parse(await localServices.file.read(path));
+            let data = JSON.parse(await localServices.file.read(path));
+            if (pathDirectoryName == "cases" && isValidTopologyData(data)) {
+                updateTopologyCollapsedKeys(await getTopologyCollapsedKeys(path));
                 if (Array.isArray(data)) {
                     updateTopologyData(data);
                 }
@@ -47,7 +81,6 @@ export const InterfaceApp = forwardRef<IInterfaceAppRef, IInterfaceAppProps>((pr
                 updateEditorFilePath(undefined);
                 updateTopologyFilePath(path);
                 updateRightPanelType("topology");
-                topologyAppRef.current?.fitView();
             }
             else {
                 updateEditorFilePath(path);
@@ -215,6 +248,32 @@ export const InterfaceApp = forwardRef<IInterfaceAppRef, IInterfaceAppProps>((pr
     const onExecuteCommand = async (command: string) => {
         await terminalAppRef.current?.executeCommand(command);
     }
+    const getTopologyCollapsedKeys = async (path: string) => {
+        if (path == undefined) {
+            return [];
+        }
+        let configPath = `${pathUtils.getDirectoryName(path)}/${pathUtils.getFileNameWithoutExtension(path)}.config.json`;
+        if (await localServices.file.fileExists(configPath) == false) {
+            return [];
+        }
+        let oldConfigString = await localServices.file.read(configPath);
+        let oldConfig = oldConfigString ? JSON.parse(oldConfigString) : {};
+        return oldConfig.collapsedKeys ?? [];
+    }
+    const onTopologyCollapseKeysChange = async (keys: string[]) => {
+        if (topologyFilePathRef.current == undefined) {
+            return;
+        }
+        let configPath = `${pathUtils.getDirectoryName(topologyFilePathRef.current)}/${pathUtils.getFileNameWithoutExtension(topologyFilePathRef.current)}.config.json`;
+        let oldConfigString = await localServices.file.fileExists(configPath) ? await localServices.file.read(configPath) : undefined;
+        let oldConfig = oldConfigString ? JSON.parse(oldConfigString) : {};
+        let newConfig = {
+            ...oldConfig,
+            collapsedKeys: keys
+        };
+        await localServices.file.write(configPath, JSON.stringify(newConfig));
+        updateTopologyCollapsedKeys(keys);
+    }
     useEffect(() => {
         if (interfacePathRef.current == undefined || interfacePathRef.current == "") {
             return;
@@ -276,6 +335,8 @@ export const InterfaceApp = forwardRef<IInterfaceAppRef, IInterfaceAppProps>((pr
                                     }}
                                     ref={topologyAppRef}
                                     data={topologyData}
+                                    collapsedKeys={topologyCollapsedKeys}
+                                    onCollapsedKeysChange={onTopologyCollapseKeysChange}
                                     settings={interfaceSettings}
                                     onChangeSettings={onChangeInterfaceSettings}
                                     onChangeData={onChangeTopologyData}

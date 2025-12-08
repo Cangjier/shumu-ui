@@ -18,7 +18,9 @@ export const getInterfaceSettingRecords: () => ITableSettingsRecord[] = () => {
             description: [`The command line to generate the node,`,
                 `{key} will be replaced with the node key,`,
                 `{file_path} will be replaced with the file path,`,
-                `{prompt} will be replaced with the prompt`
+                `{prompt} will be replaced with the prompt,`,
+                `{key_field} will be replaced with the key field,`,
+                `{context_file_path} will be replaced with the context file path`
             ].join("\n")
         }, {
             key: "Project.OpenWorkspaceCommandLine",

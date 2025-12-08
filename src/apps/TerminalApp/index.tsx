@@ -273,7 +273,7 @@ export const TerminalApp = forwardRef<ITerminalAppRef, ITerminalAppProps>((props
             }
         }
         listensRef.current.push(listen);
-        await terminalRef.terminalEnd.send(terminalRef.activeTab, `${command} && echo ${done}\r`);
+        await terminalRef.terminalEnd.send(terminalRef.activeTab, `${command} & echo ${done}\r`);
         await promise;
         listensRef.current = listensRef.current.filter(listen => listen !== listen);
     }

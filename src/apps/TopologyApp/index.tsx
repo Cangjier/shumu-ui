@@ -1,5 +1,5 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
-import { Connection, Edge, Node } from "reactflow";
+import { BezierEdge, Connection, Edge, Node } from "reactflow";
 import { usePropsRef, useUpdate } from "../../natived";
 import ELK, { ElkNode, LayoutOptions } from 'elkjs/lib/elk.bundled.js';
 import { generateGUID, useModal } from "../../services/utils";
@@ -22,6 +22,8 @@ import { InputNumber, Input, Switch, Table, InputRef, message, Tooltip, Spin } f
 import { ColumnProps } from "antd/es/table";
 import { TableApp } from "../TableApp";
 import GenerateSvg from "../../svgs/Generate.svg?react";
+import TreeExpandSvg from "../../svgs/TreeExpand.svg?react";
+import ClearSvg from "../../svgs/Clear.svg?react";
 import { localServices } from "../../services/localServices";
 import { ITableSettingsRecord, TableSettingsApp } from "../TableSettingsApp";
 import { getInterfaceSettings, IInterfaceSettings, openInterfaceSettings } from "../InterfaceSettings";
@@ -41,9 +43,13 @@ const AnynomousView = forwardRef<{}, {
     settings: IInterfaceSettings;
     style?: React.CSSProperties;
     data: IAnynomousNode;
+    collapsed?: boolean;
     onClose?: () => void;
     onEdit?: () => void;
     onGenerate?: () => void;
+    onCollapse?: () => void;
+    onExpand?: () => void;
+    onClearChildren?: () => void;
 }>((props, ref) => {
     let keys = Object.keys(props.data).filter(key => key !== "children" &&
         key !== "key" &&
@@ -80,13 +86,21 @@ const AnynomousView = forwardRef<{}, {
             <Tooltip title="Edit"><EditOutlined onClick={() => props.onEdit?.()} /></Tooltip>
             <Tooltip title="Close"><CloseOutlined onClick={() => props.onClose?.()} /></Tooltip>
             <Tooltip title="Generate"><Icon component={GenerateSvg} onClick={() => props.onGenerate?.()} /></Tooltip>
+            <Tooltip title="Clear Children"><Icon component={ClearSvg} onClick={() => props.onClearChildren?.()} /></Tooltip>
+            {props.data.children && props.data.children.length > 0 ? <Tooltip title={props.collapsed ? "Expand" : "Collapse"}><Icon style={{
+                color: props.collapsed ? "#1890ff" : "#999",
+                fill: props.collapsed ? "#1890ff" : "#999"
+            }} component={TreeExpandSvg} onClick={() => {
+                if (props.collapsed) {
+                    props.onExpand?.();
+                }
+                else {
+                    props.onCollapse?.();
+                }
+            }} /></Tooltip> : undefined}
         </div>
     </div>
 });
-
-
-
-
 
 export const LayoutNodes = (nodes: Node<IAnynomousData>[], edges: Edge[], settings: IInterfaceSettings, options: LayoutOptions) => {
     const elkOptions = {
@@ -95,6 +109,7 @@ export const LayoutNodes = (nodes: Node<IAnynomousData>[], edges: Edge[], settin
         'elk.spacing.nodeNode': '80',
         'elk.layered.nodePlacement.strategy': 'LINEAR_SEGMENTS',
         'elk.layered.considerModelOrder.strategy': 'NODES_AND_EDGES',
+        'elk.layered.edgeRouting': 'SPLINES'
     };
     const isHorizontal = options['elk.direction'] === 'RIGHT';
     const graph = {
@@ -136,6 +151,8 @@ export interface ITransformOptions {
 export interface ITopologyAppProps {
     style?: React.CSSProperties;
     data: IAnynomousNode[] | undefined;
+    collapsedKeys?: string[];
+    onCollapsedKeysChange?: (keys: string[]) => Promise<void>;
     onChangeData: (data: IAnynomousNode[]) => Promise<void>;
     onSaveData: (data: IAnynomousNode[]) => Promise<void>;
     settings: ITableSettingsRecord[];
@@ -204,6 +221,21 @@ const TopologyAppInner = forwardRef<ITopologyAppRef, ITopologyAppProps>((props, 
         }
     };
     const onConnect = useCallback((params: any) => setEdges((eds: any) => addEdge(params, eds) as any), []);
+    const generateNodeView = (itemKey: string, item: IAnynomousNode, settings: IInterfaceSettings) => {
+        return <AnynomousView style={{
+            width: "100%",
+            height: "100%",
+        }} settings={settings}
+            data={item}
+            onEdit={() => onEditNode(itemKey)}
+            onClose={() => onCloseNode(itemKey)}
+            onGenerate={() => onGenertate(itemKey)}
+            onCollapse={() => onCollapse(itemKey)}
+            onExpand={() => onExpand(itemKey)}
+            onClearChildren={() => onClearChildren(itemKey)}
+            collapsed={propsRef.current.collapsedKeys?.includes(itemKey) ?? false}
+        />
+    };
     const FlattenNodes = (parentKey: string | undefined, raw: IAnynomousNode[], depth: number, settings: IInterfaceSettings, result: {
         nodes: Node<IAnynomousData>[],
         edges: Edge[]
@@ -218,15 +250,7 @@ const TopologyAppInner = forwardRef<ITopologyAppRef, ITopologyAppProps>((props, 
                     y: depth
                 },
                 data: {
-                    label: <AnynomousView style={{
-                        width: "100%",
-                        height: "100%",
-                    }} settings={settings}
-                        data={item}
-                        onEdit={() => onEditNode(itemKey)}
-                        onClose={() => onCloseNode(itemKey)}
-                        onGenerate={() => onGenertate(itemKey)}
-                    />,
+                    label: generateNodeView(itemKey, item, settings),
                     parentKey: parentKey,
                     isRoot: parentKey === undefined,
                     hasChildren: (item.children && item.children.length > 0) ?? false,
@@ -239,10 +263,10 @@ const TopologyAppInner = forwardRef<ITopologyAppRef, ITopologyAppProps>((props, 
                     id: `edge-${parentKey}-${itemKey}`,
                     source: parentKey,
                     target: itemKey,
-                    type: 'smoothstep',
+                    type: 'bezier',
                 });
             }
-            if (item.children && item.children.length > 0) {
+            if (item.children && item.children.length > 0 && propsRef.current.collapsedKeys?.includes(itemKey) != true) {
                 FlattenNodes(itemKey, item.children, depth + 1, settings, result);
             }
         });
@@ -382,13 +406,7 @@ const TopologyAppInner = forwardRef<ITopologyAppRef, ITopologyAppProps>((props, 
                 await propsRef.current.onSaveData(data);
             }
             node.data.raw = nodeData;
-            node.data.label = <AnynomousView style={{
-                width: "100%",
-                height: "100%",
-            }} settings={settings}
-                data={nodeData}
-                onEdit={() => onEditNode(nodeKey)}
-                onClose={() => onCloseNode(nodeKey)} />;
+            node.data.label = generateNodeView(nodeKey, nodeData, settings);
             setNodes([...nodesRef.current]);
         }
     }
@@ -407,27 +425,86 @@ const TopologyAppInner = forwardRef<ITopologyAppRef, ITopologyAppProps>((props, 
         let result = await openInterfaceSettings({
             settings: propsRef.current.settings,
             showModal: showModal,
-            onFilterKey: key => key == "Topology.GenerateCommandLine",
+            onFilterKey: key => ["Topology.GenerateCommandLine", "Topology.IDField"].includes(key),
             mapKeys: {
                 "Topology.GenerateCommandLine": "Command Line",
+                "Topology.IDField": "Key Field",
             },
             otherSettings: [
                 {
                     key: "Prompt",
-                    value: "",
+                    value: localStorage.getItem("Topology.Generate.Prompt") ?? "",
+                    placeholder: "The prompt will be replaced with the {prompt}"
+                },
+                {
+                    key: "Context File Path",
+                    value: localStorage.getItem("Topology.Generate.ContextFilePath") ?? "",
+                    placeholder: "The context file path will be replaced with the {context_file_path}"
                 }
             ]
         });
         if (result) {
-            await propsRef.current.onChangeSettings?.(result.interfaceSettings);
-            let prompt = result.otherSettings.find(s => s.key === "Prompt")?.value as string;
-            let commandLine = getInterfaceSettings(result.interfaceSettings).Topology.GenerateCommandLine ?? "";
-            commandLine = commandLine.replace("{key}", raw[settings.Topology.IDField ?? "key"]);
-            commandLine = commandLine.replace("{prompt}", prompt);
-            await propsRef.current.onGenerate?.(commandLine);
+            await Try({ useLoading: true }, async () => {
+                await propsRef.current.onChangeSettings?.(result.interfaceSettings);
+                let prompt = result.otherSettings.find(s => s.key === "Prompt")?.value as string;
+                localStorage.setItem("Topology.Generate.Prompt", prompt);
+                let contextFilePath = result.otherSettings.find(s => s.key === "Context File Path")?.value as string;
+                localStorage.setItem("Topology.Generate.ContextFilePath", contextFilePath);
+                let commandLine = getInterfaceSettings(result.interfaceSettings).Topology.GenerateCommandLine ?? "";
+                commandLine = commandLine.replace("{key}", raw[settings.Topology.IDField ?? "key"]);
+                commandLine = commandLine.replace("{prompt}", `"${prompt}"`);
+                commandLine = commandLine.replace("{key_field}", settings.Topology.IDField ?? "key");
+                commandLine = commandLine.replace("{context_file_path}", contextFilePath);
+                await propsRef.current.onGenerate?.(commandLine);
+            });
         }
     }
-
+    const onCollapse = async (nodeKey: string) => {
+        await Try({ useLoading: true }, async () => {
+            await propsRef.current.onCollapsedKeysChange?.([...(propsRef.current.collapsedKeys ?? []).filter(key => key !== nodeKey), nodeKey]);
+            await new Promise(resolve => setTimeout(resolve, 200));
+            await refreshRef.current(false);
+        });
+    }
+    const onExpand = async (nodeKey: string) => {
+        await Try({ useLoading: true }, async () => {
+            await propsRef.current.onCollapsedKeysChange?.([...(propsRef.current.collapsedKeys ?? []).filter(key => key !== nodeKey)]);
+            await new Promise(resolve => setTimeout(resolve, 200));
+            await refreshRef.current(false);
+        });
+    }
+    const onClearChildren = async (nodeKey: string) => {
+        await Try({ useLoading: true }, async () => {
+            const settings = getInterfaceSettings(propsRef.current.settings);
+            let node = nodesRef.current.find(n => n.id === nodeKey);
+            if (node == undefined) {
+                messageApi.error("Node not found");
+                return;
+            }
+            let raw = node.data.raw as IAnynomousNode;
+            if (raw[settings.Topology.IDField ?? "key"] == undefined) {
+                messageApi.error("Node key is undefined");
+                return;
+            }
+            let data = propsRef.current.data;
+            if (data == undefined) {
+                messageApi.error("Data is undefined");
+                return;
+            }
+            let nodeData = getNodeFromData(data, raw[settings.Topology.IDField ?? "key"], settings);
+            if (nodeData == undefined) {
+                messageApi.error("Node data not found");
+                return;
+            }
+            nodeData.children = [];
+            if (propsRef.current.onSaveData) {
+                await propsRef.current.onSaveData(data);
+            }
+            node.data.raw = nodeData;
+            node.data.label = generateNodeView(nodeKey, nodeData, settings);
+            setNodes([...nodesRef.current]);
+        });
+    }
     useEffect(() => {
         nodesRef.current = nodes;
         edgesRef.current = edges;
@@ -455,6 +532,9 @@ const TopologyAppInner = forwardRef<ITopologyAppRef, ITopologyAppProps>((props, 
             maxZoom={4}
             nodes={nodes}
             edges={edges}
+            edgeTypes={{
+                default: BezierEdge,
+            }}
             fitView={true}
             onNodesChange={onNodesChange}
             onEdgesChange={onEdgesChange}
