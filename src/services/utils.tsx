@@ -19,6 +19,12 @@ export interface IUseModalSelf {
     setVisible: (visible: boolean) => void;
 }
 
+export const calculateWordCount = (content: string) => {
+    const contentWithoutPunctuation = content.replace(/[\r\n\.,\/#!$%\^&\*;:{}=\-_`~()，。、；：？！…—·「」『』（）《》〈〉【】]/g, '');
+    return contentWithoutPunctuation.length;
+};
+
+
 export interface IUseModalOptions {
     footer?: React.ReactNode,
     maskStyles?: React.CSSProperties,

@@ -2,7 +2,7 @@ import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useSta
 import { BezierEdge, Connection, Edge, Node } from "reactflow";
 import { usePropsRef, useUpdate } from "../../natived";
 import ELK, { ElkNode, LayoutOptions } from 'elkjs/lib/elk.bundled.js';
-import { generateGUID, useModal } from "../../services/utils";
+import { calculateWordCount, generateGUID, useModal } from "../../services/utils";
 
 import {
     Background,
@@ -17,7 +17,7 @@ import {
 } from '@xyflow/react';
 
 import '@xyflow/react/dist/style.css';
-import Icon, { CloseOutlined, EditOutlined, ExpandOutlined, InfoCircleOutlined, RedoOutlined, SettingOutlined, UndoOutlined } from "@ant-design/icons";
+import Icon, { ArrowLeftOutlined, ArrowRightOutlined, CloseOutlined, EditOutlined, ExpandOutlined, InfoCircleOutlined, PlusOutlined, RedoOutlined, SettingOutlined, UndoOutlined, VerticalLeftOutlined, VerticalRightOutlined } from "@ant-design/icons";
 import { InputNumber, Input, Switch, Table, InputRef, message, Tooltip, Spin } from "antd";
 import { ColumnProps } from "antd/es/table";
 import { TableApp } from "../TableApp";
@@ -50,6 +50,11 @@ const AnynomousView = forwardRef<{}, {
     onCollapse?: () => void;
     onExpand?: () => void;
     onClearChildren?: () => void;
+    onMovePrevious?: () => void;
+    onMoveNext?: () => void;
+    onMoveFirst?: () => void;
+    onMoveLast?: () => void;
+    onAddChild?: () => void;
 }>((props, ref) => {
     let keys = Object.keys(props.data).filter(key => key !== "children" &&
         key !== "key" &&
@@ -57,6 +62,30 @@ const AnynomousView = forwardRef<{}, {
         key !== props.settings.Topology.TitleField
     );
     const titleValue = (props.settings.Topology.TitleField && props.settings.Topology.TitleField in props.data) ? props.data[props.settings.Topology.TitleField] : undefined;
+    const renderValue = (value: any) => {
+        if (typeof value === "string") {
+            let wordCount = calculateWordCount(value);
+            if (wordCount > 100) {
+                let lines = value.split(/[\r\n]+/).filter(line => line.trim().length > 0);
+                return lines.map((line,index) => {
+                    if(index == 0){
+                        return <div key={line}>({wordCount}) {line}</div>;
+                    }
+                    else{
+                        return <div key={line}>{line}</div>;
+                    }
+                });
+            }
+            else {
+                let lines = value.split(/[\r\n]+/).filter(line => line.trim().length > 0);
+                return lines.map(line => <div key={line}>{line}</div>);
+            }
+
+        }
+        else {
+            return value;
+        }
+    };
     return <div style={{
         display: "flex",
         flexDirection: "column",
@@ -75,7 +104,10 @@ const AnynomousView = forwardRef<{}, {
             gap: "2px",
         }}>
             {keys.map(key => {
-                return <div style={{ textAlign: "left" }} key={key}>{props.settings.Topology.EnableKeyField ? `${key}: ` : ""}{props.data[key]}</div>
+                return <div style={{
+                    textAlign: "left",
+                    whiteSpace: "pre-wrap",
+                }} key={key}>{props.settings.Topology.EnableKeyField ? `${key}: ` : ""}{renderValue(props.data[key])}</div>
             })}
         </div>
         <div style={{
@@ -86,7 +118,7 @@ const AnynomousView = forwardRef<{}, {
             <Tooltip title="Edit"><EditOutlined onClick={() => props.onEdit?.()} /></Tooltip>
             <Tooltip title="Close"><CloseOutlined onClick={() => props.onClose?.()} /></Tooltip>
             <Tooltip title="Generate"><Icon component={GenerateSvg} onClick={() => props.onGenerate?.()} /></Tooltip>
-            <Tooltip title="Clear Children"><Icon component={ClearSvg} onClick={() => props.onClearChildren?.()} /></Tooltip>
+            {props.data.children && props.data.children.length > 0 ? <Tooltip title="Clear Children"><Icon component={ClearSvg} onClick={() => props.onClearChildren?.()} /></Tooltip> : undefined}
             {props.data.children && props.data.children.length > 0 ? <Tooltip title={props.collapsed ? "Expand" : "Collapse"}><Icon style={{
                 color: props.collapsed ? "#1890ff" : "#999",
                 fill: props.collapsed ? "#1890ff" : "#999"
@@ -98,6 +130,11 @@ const AnynomousView = forwardRef<{}, {
                     props.onCollapse?.();
                 }
             }} /></Tooltip> : undefined}
+            <Tooltip title="Move First"><VerticalRightOutlined onClick={() => props.onMoveFirst?.()} /></Tooltip>
+            <Tooltip title="Move Previous"><ArrowLeftOutlined onClick={() => props.onMovePrevious?.()} /></Tooltip>
+            <Tooltip title="Move Next"><ArrowRightOutlined onClick={() => props.onMoveNext?.()} /></Tooltip>
+            <Tooltip title="Move Last"><VerticalLeftOutlined onClick={() => props.onMoveLast?.()} /></Tooltip>
+            <Tooltip title="Add Child"><PlusOutlined onClick={() => props.onAddChild?.()} /></Tooltip>
         </div>
     </div>
 });
@@ -151,8 +188,8 @@ export interface ITransformOptions {
 export interface ITopologyAppProps {
     style?: React.CSSProperties;
     data: IAnynomousNode[] | undefined;
-    collapsedKeys?: string[];
-    onCollapsedKeysChange?: (keys: string[]) => Promise<void>;
+    onGetConfig: () => Promise<any>;
+    onSaveConfig: (config: any) => Promise<void>;
     onChangeData: (data: IAnynomousNode[]) => Promise<void>;
     onSaveData: (data: IAnynomousNode[]) => Promise<void>;
     settings: ITableSettingsRecord[];
@@ -180,6 +217,11 @@ const TopologyAppInner = forwardRef<ITopologyAppRef, ITopologyAppProps>((props, 
     const { fitView } = useReactFlow();
     const [nodes, setNodes, onNodesChange] = useNodesState<any>([]);
     const [edges, setEdges, onEdgesChange] = useEdgesState<any>([]);
+    const [config, updateConfig, configRef] = useUpdate<{
+        collapsedKeys?: string[];
+    }>({
+        collapsedKeys: [],
+    });
     const nodesRef = useRef<Node<IAnynomousData>[]>([]);
     const edgesRef = useRef<Edge[]>([]);
     const [loading, updateLoading, loadingRef] = useUpdate<{
@@ -233,7 +275,12 @@ const TopologyAppInner = forwardRef<ITopologyAppRef, ITopologyAppProps>((props, 
             onCollapse={() => onCollapse(itemKey)}
             onExpand={() => onExpand(itemKey)}
             onClearChildren={() => onClearChildren(itemKey)}
-            collapsed={propsRef.current.collapsedKeys?.includes(itemKey) ?? false}
+            onMoveFirst={() => onMoveFirst(itemKey)}
+            onMovePrevious={() => onMovePrevious(itemKey)}
+            onMoveNext={() => onMoveNext(itemKey)}
+            onMoveLast={() => onMoveLast(itemKey)}
+            onAddChild={() => onAddChild(itemKey)}
+            collapsed={configRef.current.collapsedKeys?.includes(itemKey) ?? false}
         />
     };
     const FlattenNodes = (parentKey: string | undefined, raw: IAnynomousNode[], depth: number, settings: IInterfaceSettings, result: {
@@ -266,7 +313,7 @@ const TopologyAppInner = forwardRef<ITopologyAppRef, ITopologyAppProps>((props, 
                     type: 'bezier',
                 });
             }
-            if (item.children && item.children.length > 0 && propsRef.current.collapsedKeys?.includes(itemKey) != true) {
+            if (item.children && item.children.length > 0 && configRef.current.collapsedKeys?.includes(itemKey) != true) {
                 FlattenNodes(itemKey, item.children, depth + 1, settings, result);
             }
         });
@@ -276,6 +323,15 @@ const TopologyAppInner = forwardRef<ITopologyAppRef, ITopologyAppProps>((props, 
             setNodes([]);
             setEdges([]);
             return;
+        }
+        let config = await propsRef.current.onGetConfig?.();
+        if (config) {
+            updateConfig(config);
+        }
+        else {
+            updateConfig({
+                collapsedKeys: [],
+            });
         }
         const tempNodes: Node<IAnynomousData>[] = [];
         const tempEdges: Edge[] = [];
@@ -356,7 +412,8 @@ const TopologyAppInner = forwardRef<ITopologyAppRef, ITopologyAppProps>((props, 
         if (propsRef.current.onSaveData) {
             await propsRef.current.onSaveData(newData);
         }
-        setNodes(nodesRef.current.filter(n => n.id !== nodeKey));
+        await new Promise(resolve => setTimeout(resolve, 200));
+        await refreshRef.current(false);
     }
     const onEditNode = async (nodeKey: string) => {
         const settings = getInterfaceSettings(propsRef.current.settings);
@@ -405,9 +462,8 @@ const TopologyAppInner = forwardRef<ITopologyAppRef, ITopologyAppProps>((props, 
             if (propsRef.current.onSaveData) {
                 await propsRef.current.onSaveData(data);
             }
-            node.data.raw = nodeData;
-            node.data.label = generateNodeView(nodeKey, nodeData, settings);
-            setNodes([...nodesRef.current]);
+            await new Promise(resolve => setTimeout(resolve, 200));
+            await refreshRef.current(false);
         }
     }
     const onGenertate = async (nodeKey: string) => {
@@ -451,24 +507,30 @@ const TopologyAppInner = forwardRef<ITopologyAppRef, ITopologyAppProps>((props, 
                 let contextFilePath = result.otherSettings.find(s => s.key === "Context File Path")?.value as string;
                 localStorage.setItem("Topology.Generate.ContextFilePath", contextFilePath);
                 let commandLine = getInterfaceSettings(result.interfaceSettings).Topology.GenerateCommandLine ?? "";
-                commandLine = commandLine.replace("{key}", raw[settings.Topology.IDField ?? "key"]);
+                commandLine = commandLine.replace("{key}", `"${raw[settings.Topology.IDField ?? "key"]}"`);
                 commandLine = commandLine.replace("{prompt}", `"${prompt}"`);
-                commandLine = commandLine.replace("{key_field}", settings.Topology.IDField ?? "key");
-                commandLine = commandLine.replace("{context_file_path}", contextFilePath);
+                commandLine = commandLine.replace("{key_field}", `"${settings.Topology.IDField ?? "key"}"`);
+                commandLine = commandLine.replace("{context_file_path}", `"${contextFilePath}"`);
                 await propsRef.current.onGenerate?.(commandLine);
             });
         }
     }
+    const updateConfigWithSave = async (callback: (config: { collapsedKeys?: string[] }) => { collapsedKeys?: string[] }) => {
+        let newConfig = callback(configRef.current);
+        if (propsRef.current.onSaveConfig) {
+            await propsRef.current.onSaveConfig(newConfig);
+        }
+    }
     const onCollapse = async (nodeKey: string) => {
         await Try({ useLoading: true }, async () => {
-            await propsRef.current.onCollapsedKeysChange?.([...(propsRef.current.collapsedKeys ?? []).filter(key => key !== nodeKey), nodeKey]);
+            await updateConfigWithSave(old => ({ ...old, collapsedKeys: [...(old.collapsedKeys ?? []).filter(key => key !== nodeKey), nodeKey] }));
             await new Promise(resolve => setTimeout(resolve, 200));
             await refreshRef.current(false);
         });
     }
     const onExpand = async (nodeKey: string) => {
         await Try({ useLoading: true }, async () => {
-            await propsRef.current.onCollapsedKeysChange?.([...(propsRef.current.collapsedKeys ?? []).filter(key => key !== nodeKey)]);
+            await updateConfigWithSave(old => ({ ...old, collapsedKeys: [...(old.collapsedKeys ?? []).filter(key => key !== nodeKey)] }));
             await new Promise(resolve => setTimeout(resolve, 200));
             await refreshRef.current(false);
         });
@@ -500,11 +562,149 @@ const TopologyAppInner = forwardRef<ITopologyAppRef, ITopologyAppProps>((props, 
             if (propsRef.current.onSaveData) {
                 await propsRef.current.onSaveData(data);
             }
-            node.data.raw = nodeData;
-            node.data.label = generateNodeView(nodeKey, nodeData, settings);
-            setNodes([...nodesRef.current]);
+            await new Promise(resolve => setTimeout(resolve, 200));
+            await refreshRef.current(false);
         });
     }
+    const onMoveTo = async (nodeKey: string, onIndex: (oldIndex: number, oldLength: number) => number) => {
+        await Try({ useLoading: true }, async () => {
+            const settings = getInterfaceSettings(propsRef.current.settings);
+            let node = nodesRef.current.find(n => n.id === nodeKey);
+            if (node == undefined) {
+                messageApi.error("Node not found");
+                return;
+            }
+            let raw = node.data.raw as IAnynomousNode;
+            if (raw[settings.Topology.IDField ?? "key"] == undefined) {
+                messageApi.error("Node key is undefined");
+                return;
+            }
+            let parentKey = node.data.parentKey;
+            if (parentKey == undefined) {
+                messageApi.error("Node is the root");
+                return;
+            }
+            let data = propsRef.current.data;
+            if (data == undefined) {
+                messageApi.error("Data is undefined");
+                return;
+            }
+            let parentNodeData = getNodeFromData(data, parentKey, settings);
+            if (parentNodeData == undefined) {
+                messageApi.error("Parent node data not found");
+                return;
+            }
+            let index = parentNodeData.children?.findIndex(item => item[settings.Topology.IDField ?? "key"] === raw[settings.Topology.IDField ?? "key"]);
+            if (index == undefined) {
+                messageApi.error("Node is not a child of the parent node");
+                return;
+            }
+            if (parentNodeData.children == undefined || parentNodeData.children.length == 0) {
+                messageApi.error("Parent node has no children");
+                return;
+            }
+            let newIndex = onIndex(index, parentNodeData.children.length);
+            if (newIndex == index) {
+                return;
+            }
+            if (newIndex < 0 || newIndex > parentNodeData.children.length) {
+                messageApi.error("New index is out of range");
+                return;
+            }
+            // 先移除，再插入
+            let indexNodeData = parentNodeData.children?.[index];
+            if (indexNodeData == undefined) {
+                messageApi.error("Node data not found");
+                return;
+            }
+            parentNodeData.children?.splice(index, 1);
+            // 插入newIndex位置
+            parentNodeData.children?.splice(newIndex, 0, indexNodeData);
+            if (propsRef.current.onSaveData) {
+                await propsRef.current.onSaveData(data);
+            }
+            await new Promise(resolve => setTimeout(resolve, 200));
+            await refreshRef.current(false);
+        });
+    };
+    const onMovePrevious = async (nodeKey: string) => {
+        await onMoveTo(nodeKey, (index, length) => index - 1);
+    };
+    const onMoveNext = async (nodeKey: string) => {
+        await onMoveTo(nodeKey, (index, length) => index + 1);
+    };
+    const onMoveLast = async (nodeKey: string) => {
+        await onMoveTo(nodeKey, (index, length) => length - 1);
+    };
+    const onMoveFirst = async (nodeKey: string) => {
+        await onMoveTo(nodeKey, (index, length) => 0);
+    };
+    const onAddChild = async (nodeKey: string) => {
+        const settings = getInterfaceSettings(propsRef.current.settings);
+        let node = nodesRef.current.find(n => n.id === nodeKey);
+        if (node == undefined) {
+            messageApi.error("Node not found");
+            return;
+        }
+        let raw = node.data.raw as IAnynomousNode;
+        if (raw[settings.Topology.IDField ?? "key"] == undefined) {
+            messageApi.error("Node key is undefined");
+            return;
+        }
+        let data = propsRef.current.data;
+        if (data == undefined) {
+            messageApi.error("Data is undefined");
+            return;
+        }
+        let nodeData = getNodeFromData(data, raw[settings.Topology.IDField ?? "key"], settings);
+        if (nodeData == undefined) {
+            messageApi.error("Node data not found");
+            return;
+        }
+        let tempSettings = [{
+            key: settings.Topology.IDField ?? "key",
+            value: "",
+            placeholder: "The key of the child node"
+        }];
+        for (let field of settings.Topology.RequiredFields ?? []) {
+            tempSettings.push({
+                key: field,
+                value: "",
+                placeholder: `The ${field} of the child node`
+            });
+        }
+        let accept = await showModal(() => {
+            const [innerSettings, setInnerSettings] = useState(tempSettings);
+            useEffect(() => {
+                tempSettings = innerSettings;
+            }, [innerSettings]);
+            return <TableSettingsApp
+                data={innerSettings}
+                onChange={(key, value) => setInnerSettings(innerSettings.map(s => s.key === key ? { ...s, value: value } : s))} />
+        }, {
+            width: "80vw",
+            height: "65vh",
+            margin: "20px 0 0 0"
+        });
+        if (accept) {
+            let newNode = {
+                [settings.Topology.IDField ?? "key"]: tempSettings[0].value,
+                children: [],
+            };
+            for (let field of settings.Topology.RequiredFields ?? []) {
+                newNode[field] = tempSettings.find(s => s.key === field)?.value as string;
+            }
+            if (nodeData.children == undefined) {
+                nodeData.children = [];
+            }
+            nodeData.children.push(newNode);
+            if (propsRef.current.onSaveData) {
+                await propsRef.current.onSaveData(data);
+            }
+            await new Promise(resolve => setTimeout(resolve, 200));
+            await refreshRef.current(false);
+        }
+    };
     useEffect(() => {
         nodesRef.current = nodes;
         edgesRef.current = edges;

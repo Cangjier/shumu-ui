@@ -46,7 +46,7 @@ export const TableSettingsApp = forwardRef<{}, {
             key: "value",
             render: (value: any, record: ITableSettingsRecord, index: number) => {
                 if (typeof record.value === "string") {
-                    return <Input defaultValue={record.value as string} placeholder={record.placeholder} onChange={e => props.onChange(record.key, e.target.value)} />
+                    return <Input.TextArea autoSize defaultValue={record.value as string} placeholder={record.placeholder} onChange={e => props.onChange(record.key, e.target.value)} />
                 }
                 else if (typeof record.value === "boolean") {
                     return <Switch defaultChecked={value.value as boolean} onChange={e => props.onChange(record.key, e)} />

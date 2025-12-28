@@ -71,7 +71,6 @@ export const InterfaceApp = forwardRef<IInterfaceAppRef, IInterfaceAppProps>((pr
         if (path.endsWith(".json")) {
             let data = JSON.parse(await localServices.file.read(path));
             if (pathDirectoryName == "cases" && isValidTopologyData(data)) {
-                updateTopologyCollapsedKeys(await getTopologyCollapsedKeys(path));
                 if (Array.isArray(data)) {
                     updateTopologyData(data);
                 }
@@ -248,7 +247,8 @@ export const InterfaceApp = forwardRef<IInterfaceAppRef, IInterfaceAppProps>((pr
     const onExecuteCommand = async (command: string) => {
         await terminalAppRef.current?.executeCommand(command);
     }
-    const getTopologyCollapsedKeys = async (path: string) => {
+    const onGetTopologyConfig = async () => {
+        let path = topologyFilePathRef.current;
         if (path == undefined) {
             return [];
         }
@@ -258,9 +258,9 @@ export const InterfaceApp = forwardRef<IInterfaceAppRef, IInterfaceAppProps>((pr
         }
         let oldConfigString = await localServices.file.read(configPath);
         let oldConfig = oldConfigString ? JSON.parse(oldConfigString) : {};
-        return oldConfig.collapsedKeys ?? [];
+        return oldConfig;
     }
-    const onTopologyCollapseKeysChange = async (keys: string[]) => {
+    const onSaveTopologyConfig = async (config: { collapsedKeys?: string[] }) => {
         if (topologyFilePathRef.current == undefined) {
             return;
         }
@@ -269,10 +269,9 @@ export const InterfaceApp = forwardRef<IInterfaceAppRef, IInterfaceAppProps>((pr
         let oldConfig = oldConfigString ? JSON.parse(oldConfigString) : {};
         let newConfig = {
             ...oldConfig,
-            collapsedKeys: keys
+            ...config
         };
         await localServices.file.write(configPath, JSON.stringify(newConfig));
-        updateTopologyCollapsedKeys(keys);
     }
     useEffect(() => {
         if (interfacePathRef.current == undefined || interfacePathRef.current == "") {
@@ -335,8 +334,8 @@ export const InterfaceApp = forwardRef<IInterfaceAppRef, IInterfaceAppProps>((pr
                                     }}
                                     ref={topologyAppRef}
                                     data={topologyData}
-                                    collapsedKeys={topologyCollapsedKeys}
-                                    onCollapsedKeysChange={onTopologyCollapseKeysChange}
+                                    onGetConfig={onGetTopologyConfig}
+                                    onSaveConfig={onSaveTopologyConfig}
                                     settings={interfaceSettings}
                                     onChangeSettings={onChangeInterfaceSettings}
                                     onChangeData={onChangeTopologyData}

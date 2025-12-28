@@ -10,6 +10,12 @@ export const getInterfaceSettingRecords: () => ITableSettingsRecord[] = () => {
         { key: "Topology.TitleField", value: "" },
         { key: "Topology.NodeWidth", value: 300 },
         { key: "Topology.NodeHeight", value: 180 },
+        {
+            key: "Topology.RequiredFields",
+            value: "",
+            placeholder: "such as: key,title,prompt",
+            description: "The required fields of the node, separated by commas"
+        },
         { key: "Topology.IDField", value: "key" },
         {
             key: "Topology.GenerateCommandLine",
@@ -42,6 +48,7 @@ export interface IInterfaceSettings {
         NodeHeight?: number;
         IDField?: string;
         GenerateCommandLine?: string;
+        RequiredFields?: string[];
     },
     Project: {
         OpenWorkspaceCommandLine?: string;
@@ -61,6 +68,7 @@ export const getInterfaceSettings = (settings: ITableSettingsRecord[]): IInterfa
             NodeHeight: Number.isNaN(Number(getSetting("Topology.NodeHeight"))) ? 180 : Number(getSetting("Topology.NodeHeight")),
             IDField: (getSetting("Topology.IDField") as string) ?? "key",
             GenerateCommandLine: (getSetting("Topology.GenerateCommandLine") as string) ?? "",
+            RequiredFields: (getSetting("Topology.RequiredFields") as string).split(/[,，;；\s]+/).filter(s => s.trim() !== "") ?? [],
         },
         Project: {
             OpenWorkspaceCommandLine: (getSetting("Project.OpenWorkspaceCommandLine") as string) ?? "",

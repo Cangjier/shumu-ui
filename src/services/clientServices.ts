@@ -122,6 +122,15 @@ export const ClientServices = () => {
         }
     }
 
+    const maximize = async () => {
+        let webapplication = (window as any).webapplication;
+        if (webapplication) {
+            await api.post("/api/v1/app/maximize", {
+                id: webapplication.id
+            });
+        }
+    }
+
     const show = async () => {
         let webapplication = (window as any).webapplication;
         if (webapplication) {
@@ -194,6 +203,7 @@ export const ClientServices = () => {
         close,
         exit,
         minimize,
+        maximize,
         getDataByID,
         show,
         broadcast,

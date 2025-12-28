@@ -1,7 +1,7 @@
 import React, { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
 import { InjectClass, useUpdate } from "../../natived";
 import { Button, Spin, Splitter } from "antd";
-import { CloseOutlined, FolderOutlined, MinusOutlined, ProjectOutlined } from "@ant-design/icons";
+import { CloseOutlined, ExpandOutlined, FolderOutlined, MinusOutlined, ProjectOutlined } from "@ant-design/icons";
 import { clientServices } from "../../services/clientServices.ts";
 import { remoteServices } from "../../services/remoteServices.ts";
 import InterfaceSVG from "../../svgs/Interface.svg?react";
@@ -176,6 +176,9 @@ export const Home = forwardRef<IHomeRef, IHomeProps>((props, ref) => {
                 <Button type='text' icon={<MinusOutlined />} onClick={() => {
                     clientServices.minimize();
                 }}>{"Minimize"}</Button>
+                <Button type='text' icon={<ExpandOutlined />} onClick={() => {
+                    clientServices.maximize();
+                }}>{"Maximize"}</Button>
                 <Button type='text' icon={<CloseOutlined />} onClick={() => {
                     clientServices.exit();
                 }}>{"Close"}</Button>
